@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
+  <!-- Samarluan Logo - Espiral S estilizada -->
+  <!-- Capa externa -->
+  <path d="M60 8 C32 8, 10 28, 10 56 C10 78, 24 96, 48 100 C58 102, 68 100, 76 94" stroke="#1a1a1a" stroke-width="5.5" stroke-linecap="round" fill="none"/>
+  <!-- Capa media superior -->
+  <path d="M76 94 C88 84, 94 70, 92 54 C90 38, 78 24, 60 20 C48 18, 38 22, 32 30" stroke="#1a1a1a" stroke-width="5.5" stroke-linecap="round" fill="none"/>
+  <!-- Capa media inferior -->
+  <path d="M32 30 C24 40, 22 54, 28 66 C34 78, 48 86, 62 82 C72 80, 78 72, 80 64" stroke="#1a1a1a" stroke-width="5.5" stroke-linecap="round" fill="none"/>
+  <!-- Capa interna -->
+  <path d="M80 64 C82 52, 76 42, 64 38 C54 36, 44 40, 40 48 C36 56, 40 66, 50 70 C56 72, 62 70, 66 64" stroke="#1a1a1a" stroke-width="5.5" stroke-linecap="round" fill="none"/>
+  <!-- Centro -->
+  <path d="M66 64 C68 58, 64 52, 58 52 C54 52, 50 56, 52 60" stroke="#1a1a1a" stroke-width="5" stroke-linecap="round" fill="none"/>
+</svg>
