@@ -16,7 +16,7 @@ type SortField = 'partner' | 'amount' | 'due_date' | 'days_overdue';
 type SortDir = 'asc' | 'desc';
 
 export default function FinancieroPage() {
-  const { companyParam, dateFrom, dateTo } = useCompanyFilter();
+  const { companyParam, dateFrom, dateTo, prevDateFrom, prevDateTo } = useCompanyFilter();
 
   // Facturas vencidas: paginación, filtro, ordenación
   const [invoicePage, setInvoicePage] = useState(1);
@@ -31,12 +31,22 @@ export default function FinancieroPage() {
     return p;
   }, [dateFrom, dateTo, companyParam]);
 
+  const prevParams = useMemo(() => {
+    const p: Record<string, string> = { date_from: prevDateFrom, date_to: prevDateTo };
+    if (companyParam) p.company = companyParam;
+    return p;
+  }, [prevDateFrom, prevDateTo, companyParam]);
+
   const financial = useOdooQuery<FinancialSummary>({ url: '/api/financial/summary', params });
+  const prevFinancial = useOdooQuery<FinancialSummary>({ url: '/api/financial/summary', params: prevParams });
   const cashflow = useOdooQuery<CashFlowData>({ url: '/api/financial/cashflow', params: companyParam ? { company: companyParam } : {} });
   const treasury = useOdooQuery<{ data: { fecha: string; valor: number }[] }>({ url: '/api/financial/treasury', params });
 
   const dso = useOdooQuery<{ dso: number; ventas_periodo: number; cuentas_cobrar: number }>({
     url: '/api/financial/dso', params,
+  });
+  const prevDso = useOdooQuery<{ dso: number; ventas_periodo: number; cuentas_cobrar: number }>({
+    url: '/api/financial/dso', params: prevParams,
   });
 
   const overdueInvoices = useOdooQuery<{
@@ -104,11 +114,11 @@ export default function FinancieroPage() {
 
       {/* KPIs */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <KPICard title="Ingresos" value={financial.data?.explotacion.ingresos ?? 0} format="currency" icon={<ArrowDownCircle className="h-4 w-4" />} loading={financial.loading} />
-        <KPICard title="Gastos" value={Math.abs(financial.data?.explotacion.gastos ?? 0)} format="currency" icon={<ArrowUpCircle className="h-4 w-4" />} trendPositive="down" loading={financial.loading} />
-        <KPICard title="Resultado" value={financial.data?.resultado_antes_impuestos ?? 0} format="currency" icon={<TrendingUp className="h-4 w-4" />} loading={financial.loading} />
+        <KPICard title="Ingresos" value={financial.data?.explotacion.ingresos ?? 0} previousValue={prevFinancial.data?.explotacion.ingresos} format="currency" icon={<ArrowDownCircle className="h-4 w-4" />} loading={financial.loading} />
+        <KPICard title="Gastos" value={Math.abs(financial.data?.explotacion.gastos ?? 0)} previousValue={prevFinancial.data ? Math.abs(prevFinancial.data.explotacion.gastos) : undefined} format="currency" icon={<ArrowUpCircle className="h-4 w-4" />} trendPositive="down" loading={financial.loading} />
+        <KPICard title="Resultado" value={financial.data?.resultado_antes_impuestos ?? 0} previousValue={prevFinancial.data?.resultado_antes_impuestos} format="currency" icon={<TrendingUp className="h-4 w-4" />} loading={financial.loading} />
         <KPICard title="Impagos" value={overdueInvoices.data?.total ?? 0} format="currency" icon={<AlertTriangle className="h-4 w-4" />} trendPositive="down" loading={overdueInvoices.loading} subtitle={`${overdueInvoices.data?.count ?? 0} facturas vencidas`} />
-        <KPICard title="DSO" value={dso.data?.dso ?? 0} format="days" icon={<CreditCard className="h-4 w-4" />} trendPositive="down" loading={dso.loading} subtitle="dias de cobro" />
+        <KPICard title="DSO" value={dso.data?.dso ?? 0} previousValue={prevDso.data?.dso} format="days" icon={<CreditCard className="h-4 w-4" />} trendPositive="down" loading={dso.loading} subtitle="dias de cobro" />
       </div>
 
       {/* Gráficos */}

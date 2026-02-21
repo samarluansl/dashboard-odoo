@@ -8,7 +8,7 @@ import { ErrorMessage } from '@/components/ui/error-message';
 import { useOdooQuery } from '@/lib/hooks/useOdooQuery';
 import { useCompanyFilter } from '@/lib/context/CompanyContext';
 import { fmtEur2, cn } from '@/lib/utils';
-import { Target, Trophy, TrendingUp, Users, ArrowUpDown, Search, ChevronLeft, ChevronRight, ChevronDown, Check, X, UserPlus, UserMinus, AlertTriangle } from 'lucide-react';
+import { Target, Trophy, TrendingUp, Users, ArrowUpDown, Search, ChevronLeft, ChevronRight, ChevronDown, Check, X, UserPlus, UserMinus, AlertTriangle, CheckCircle } from 'lucide-react';
 
 /* ── Multi-select dropdown para etapas CRM ── */
 function StageMultiSelect({
@@ -127,11 +127,12 @@ function StageMultiSelect({
   );
 }
 
+type CRMSummary = { oportunidades_activas: number; pipeline_value: number; ganadas: number; perdidas: number; tasa_conversion: number; altas: number; bajas: number; impagos: number; posibles_bajas: number; clubs_activos: number };
 type DealSortField = 'expected_revenue' | 'partner' | 'stage' | 'probability';
 type SortDir = 'asc' | 'desc';
 
 export default function CRMPage() {
-  const { companyParam, dateFrom, dateTo } = useCompanyFilter();
+  const { companyParam, dateFrom, dateTo, prevDateFrom, prevDateTo } = useCompanyFilter();
 
   // Filtros pipeline
   const [selectedStages, setSelectedStages] = useState<string[]>([]);
@@ -150,7 +151,14 @@ export default function CRMPage() {
     return p;
   }, [dateFrom, dateTo, companyParam]);
 
-  const summary = useOdooQuery<{ oportunidades_activas: number; pipeline_value: number; ganadas: number; perdidas: number; tasa_conversion: number; altas: number; bajas: number; impagos: number; impagos_value: number }>({ url: '/api/crm/summary', params });
+  const prevParams = useMemo(() => {
+    const p: Record<string, string> = { date_from: prevDateFrom, date_to: prevDateTo };
+    if (companyParam) p.company = companyParam;
+    return p;
+  }, [prevDateFrom, prevDateTo, companyParam]);
+
+  const summary = useOdooQuery<CRMSummary>({ url: '/api/crm/summary', params });
+  const prevSummary = useOdooQuery<CRMSummary>({ url: '/api/crm/summary', params: prevParams });
   const pipeline = useOdooQuery<{ stages: Array<{ name: string; value: number; count: number; color?: string }> }>({ url: '/api/crm/pipeline', params: companyParam ? { company: companyParam } : {} });
   const topDeals = useOdooQuery<{ deals: Array<{ name: string; partner: string; expected_revenue: number; stage: string; probability: number }> }>({ url: '/api/crm/top-deals', params: companyParam ? { company: companyParam } : {} });
 
@@ -224,6 +232,9 @@ export default function CRMPage() {
     <ArrowUpDown className={`inline h-3 w-3 ml-1 ${dealSort === field ? 'text-blue-600' : 'text-gray-300'}`} />
   );
 
+  const d = summary.data;
+  const p = prevSummary.data;
+
   return (
     <div className="space-y-6">
       <div>
@@ -249,13 +260,13 @@ export default function CRMPage() {
       )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
-        <KPICard title="Oportunidades" value={filteredOps.count} format="integer" icon={<Target className="h-4 w-4" />} loading={summary.loading} />
-        <KPICard title="Valor pipeline" value={filteredOps.value} format="currency" icon={<TrendingUp className="h-4 w-4" />} loading={summary.loading} />
-        <KPICard title="Altas" value={summary.data?.altas ?? 0} format="integer" icon={<UserPlus className="h-4 w-4" />} trendPositive="up" loading={summary.loading} subtitle="este periodo" />
-        <KPICard title="Bajas" value={summary.data?.bajas ?? 0} format="integer" icon={<UserMinus className="h-4 w-4" />} trendPositive="down" loading={summary.loading} subtitle="este periodo" />
-        <KPICard title="Ganadas" value={summary.data?.ganadas ?? 0} format="integer" icon={<Trophy className="h-4 w-4" />} trendPositive="up" loading={summary.loading} subtitle={`${summary.data?.perdidas ?? 0} perdidas`} />
-        <KPICard title="Impagos" value={summary.data?.impagos ?? 0} format="integer" icon={<AlertTriangle className="h-4 w-4" />} trendPositive="down" loading={summary.loading} subtitle={summary.data?.impagos_value ? fmtEur2(summary.data.impagos_value) : undefined} />
-        <KPICard title="Conversion" value={summary.data?.tasa_conversion ?? 0} format="percent" icon={<Users className="h-4 w-4" />} trendPositive="up" loading={summary.loading} />
+        <KPICard title="Clubs activos" value={d?.clubs_activos ?? 0} previousValue={p?.clubs_activos} format="integer" icon={<CheckCircle className="h-4 w-4" />} trendPositive="up" loading={summary.loading} subtitle="clubs" />
+        <KPICard title="Oportunidades" value={filteredOps.count} previousValue={p?.oportunidades_activas} format="integer" icon={<Target className="h-4 w-4" />} loading={summary.loading} />
+        <KPICard title="Altas" value={d?.altas ?? 0} previousValue={p?.altas} format="integer" icon={<UserPlus className="h-4 w-4" />} trendPositive="up" loading={summary.loading} subtitle="este periodo" />
+        <KPICard title="Bajas" value={d?.bajas ?? 0} previousValue={p?.bajas} format="integer" icon={<UserMinus className="h-4 w-4" />} trendPositive="down" loading={summary.loading} subtitle="este periodo" />
+        <KPICard title="Posibles bajas" value={d?.posibles_bajas ?? 0} previousValue={p?.posibles_bajas} format="integer" icon={<AlertTriangle className="h-4 w-4" />} trendPositive="down" loading={summary.loading} subtitle="clubs" />
+        <KPICard title="Impagos" value={d?.impagos ?? 0} previousValue={p?.impagos} format="integer" icon={<AlertTriangle className="h-4 w-4" />} trendPositive="down" loading={summary.loading} subtitle="clubs" />
+        <KPICard title="Conversion" value={d?.tasa_conversion ?? 0} previousValue={p?.tasa_conversion} format="percent" icon={<Users className="h-4 w-4" />} trendPositive="up" loading={summary.loading} />
       </div>
 
       {/* Pipeline por etapa — tabla con números */}
@@ -271,30 +282,29 @@ export default function CRMPage() {
                   <tr className="border-b border-gray-200 text-left text-gray-500">
                     <th className="pb-2 font-medium">Etapa</th>
                     <th className="pb-2 font-medium text-right">Oportunidades</th>
-                    <th className="pb-2 font-medium text-right">Valor</th>
                     <th className="pb-2 font-medium" style={{ width: '40%' }}>Proporcion</th>
                   </tr>
                 </thead>
                 <tbody>
                   {(() => {
-                    const maxVal = Math.max(...filteredPipeline.map(s => s.value), 1);
+                    const maxCount = Math.max(...filteredPipeline.map(s => s.count), 1);
+                    const totalCount = filteredPipeline.reduce((s, st) => s + st.count, 0) || 1;
                     return filteredPipeline.map((stage, i) => (
                       <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
                         <td className="py-2.5 font-medium text-gray-900">{stage.name}</td>
                         <td className="py-2.5 text-right text-gray-600">{stage.count}</td>
-                        <td className="py-2.5 text-right font-semibold text-gray-900 whitespace-nowrap">{fmtEur2(stage.value)}</td>
                         <td className="py-2.5 px-2">
                           <div className="flex items-center gap-2">
                             <div className="flex-1 h-3 bg-gray-100 rounded-full overflow-hidden">
                               <div
                                 className="h-full rounded-full transition-all"
                                 style={{
-                                  width: `${(stage.value / maxVal) * 100}%`,
+                                  width: `${(stage.count / maxCount) * 100}%`,
                                   backgroundColor: stage.color || '#f59e0b',
                                 }}
                               />
                             </div>
-                            <span className="text-xs text-gray-400 w-10 text-right">{((stage.value / (filteredPipeline.reduce((s, st) => s + st.value, 0) || 1)) * 100).toFixed(0)}%</span>
+                            <span className="text-xs text-gray-400 w-10 text-right">{((stage.count / totalCount) * 100).toFixed(0)}%</span>
                           </div>
                         </td>
                       </tr>
@@ -305,7 +315,6 @@ export default function CRMPage() {
                   <tr className="border-t border-gray-200">
                     <td className="pt-2 font-semibold text-gray-900">Total</td>
                     <td className="pt-2 text-right font-semibold text-gray-900">{filteredPipeline.reduce((s, st) => s + st.count, 0)}</td>
-                    <td className="pt-2 text-right font-bold text-gray-900 whitespace-nowrap">{fmtEur2(filteredPipeline.reduce((s, st) => s + st.value, 0))}</td>
                     <td></td>
                   </tr>
                 </tfoot>

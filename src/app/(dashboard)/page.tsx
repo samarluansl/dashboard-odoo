@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 
 export default function DashboardPage() {
-  const { companyParam, dateFrom, dateTo } = useCompanyFilter();
+  const { companyParam, dateFrom, dateTo, prevDateFrom, prevDateTo } = useCompanyFilter();
 
   // Parámetros base
   const params = useMemo(() => {
@@ -25,21 +25,11 @@ export default function DashboardPage() {
     return p;
   }, [dateFrom, dateTo, companyParam]);
 
-  // Período anterior para comparar (para KPIs con tendencia)
-  const prevRange = useMemo(() => {
-    const diffMs = new Date(dateTo).getTime() - new Date(dateFrom).getTime();
-    const prevTo = new Date(new Date(dateFrom).getTime() - 1);
-    const prevFrom = new Date(prevTo.getTime() - diffMs);
-    const pad = (n: number) => String(n).padStart(2, '0');
-    const fmt = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-    return { from: fmt(prevFrom), to: fmt(prevTo) };
-  }, [dateFrom, dateTo]);
-
   const prevParams = useMemo(() => {
-    const p: Record<string, string> = { date_from: prevRange.from, date_to: prevRange.to };
+    const p: Record<string, string> = { date_from: prevDateFrom, date_to: prevDateTo };
     if (companyParam) p.company = companyParam;
     return p;
-  }, [prevRange, companyParam]);
+  }, [prevDateFrom, prevDateTo, companyParam]);
 
   // ═══ QUERIES ═══
   const financial = useOdooQuery<FinancialSummary>({
@@ -72,6 +62,16 @@ export default function DashboardPage() {
     params,
   });
 
+  const prevHrSummary = useOdooQuery<{
+    empleados_activos: number;
+    nuevas_altas: number;
+    horas_mes: number;
+    coste_nomina: number;
+  }>({
+    url: '/api/hr/summary',
+    params: prevParams,
+  });
+
   const crmSummary = useOdooQuery<{
     oportunidades_activas: number;
     pipeline_value: number;
@@ -82,6 +82,16 @@ export default function DashboardPage() {
     params,
   });
 
+  const prevCrmSummary = useOdooQuery<{
+    oportunidades_activas: number;
+    pipeline_value: number;
+    ganadas: number;
+    tasa_conversion: number;
+  }>({
+    url: '/api/crm/summary',
+    params: prevParams,
+  });
+
   const subscriptions = useOdooQuery<{
     mrr: number;
     activas: number;
@@ -90,6 +100,16 @@ export default function DashboardPage() {
   }>({
     url: '/api/subscriptions/summary',
     params,
+  });
+
+  const prevSubscriptions = useOdooQuery<{
+    mrr: number;
+    activas: number;
+    nuevas: number;
+    churn_rate: number;
+  }>({
+    url: '/api/subscriptions/summary',
+    params: prevParams,
   });
 
   const alerts = useOdooQuery<{ count: number; critical: number }>({
@@ -171,6 +191,7 @@ export default function DashboardPage() {
         <KPICard
           title="Empleados activos"
           value={hrSummary.data?.empleados_activos ?? 0}
+          previousValue={prevHrSummary.data?.empleados_activos}
           format="integer"
           icon={<Users className="h-4 w-4" />}
           loading={hrSummary.loading}
@@ -178,6 +199,7 @@ export default function DashboardPage() {
         <KPICard
           title="Pipeline CRM"
           value={crmSummary.data?.pipeline_value ?? 0}
+          previousValue={prevCrmSummary.data?.pipeline_value}
           format="currency"
           icon={<Target className="h-4 w-4" />}
           loading={crmSummary.loading}
@@ -186,6 +208,7 @@ export default function DashboardPage() {
         <KPICard
           title="MRR Suscripciones"
           value={subscriptions.data?.mrr ?? 0}
+          previousValue={prevSubscriptions.data?.mrr}
           format="currency"
           icon={<RefreshCw className="h-4 w-4" />}
           loading={subscriptions.loading}

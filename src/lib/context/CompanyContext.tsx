@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useCallback, useMemo, type ReactNode } from 'react';
-import { getDateRange } from '@/lib/utils';
+import { getDateRange, getPreviousDateRange } from '@/lib/utils';
 
 interface FilterContextType {
   /** Array de empresas seleccionadas (vacío = todas) */
@@ -19,6 +19,9 @@ interface FilterContextType {
   /** Fechas calculadas del período */
   dateFrom: string;
   dateTo: string;
+  /** Fechas del período anterior (misma duración) */
+  prevDateFrom: string;
+  prevDateTo: string;
   /** Empresas permitidas para este usuario (vacío = todas, admin sin restricción) */
   allowedCompanies: string[];
 }
@@ -50,9 +53,10 @@ export function CompanyProvider({ children, allowedCompanies = [] }: CompanyProv
 
   const companyParam = useMemo(() => selectedCompanies.join(','), [selectedCompanies]);
   const { from: dateFrom, to: dateTo } = useMemo(() => getDateRange(period), [period]);
+  const { from: prevDateFrom, to: prevDateTo } = useMemo(() => getPreviousDateRange(dateFrom, dateTo), [dateFrom, dateTo]);
 
   return (
-    <FilterContext.Provider value={{ selectedCompanies, toggleCompany, selectAll, companyParam, period, setPeriod, dateFrom, dateTo, allowedCompanies }}>
+    <FilterContext.Provider value={{ selectedCompanies, toggleCompany, selectAll, companyParam, period, setPeriod, dateFrom, dateTo, prevDateFrom, prevDateTo, allowedCompanies }}>
       {children}
     </FilterContext.Provider>
   );

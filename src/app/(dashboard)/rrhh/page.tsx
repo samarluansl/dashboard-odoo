@@ -14,7 +14,7 @@ type AttSortField = 'nombre' | 'horas_trabajadas' | 'horas_extra' | 'departament
 type SortDir = 'asc' | 'desc';
 
 export default function RRHHPage() {
-  const { companyParam, dateFrom, dateTo } = useCompanyFilter();
+  const { companyParam, dateFrom, dateTo, prevDateFrom, prevDateTo } = useCompanyFilter();
 
   // Filtros departamento
   const [deptFilter, setDeptFilter] = useState('');
@@ -32,7 +32,14 @@ export default function RRHHPage() {
     return p;
   }, [dateFrom, dateTo, companyParam]);
 
+  const prevParams = useMemo(() => {
+    const p: Record<string, string> = { date_from: prevDateFrom, date_to: prevDateTo };
+    if (companyParam) p.company = companyParam;
+    return p;
+  }, [prevDateFrom, prevDateTo, companyParam]);
+
   const summary = useOdooQuery<{ empleados_activos: number; nuevas_altas: number; horas_mes: number; coste_nomina: number }>({ url: '/api/hr/summary', params });
+  const prevSummary = useOdooQuery<{ empleados_activos: number; nuevas_altas: number; horas_mes: number; coste_nomina: number }>({ url: '/api/hr/summary', params: prevParams });
   const departments = useOdooQuery<{ data: Array<{ name: string; value: number; color?: string }> }>({ url: '/api/hr/departments', params: companyParam ? { company: companyParam } : {} });
   const attendance = useOdooQuery<{ empleados: Array<{ nombre: string; horas_trabajadas: number; horas_extra: number; departamento: string }> }>({ url: '/api/hr/attendance', params });
 
@@ -98,10 +105,10 @@ export default function RRHHPage() {
       )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KPICard title="Empleados activos" value={summary.data?.empleados_activos ?? 0} format="integer" icon={<Users className="h-4 w-4" />} loading={summary.loading} />
-        <KPICard title="Nuevas altas" value={summary.data?.nuevas_altas ?? 0} format="integer" icon={<UserPlus className="h-4 w-4" />} trendPositive="up" loading={summary.loading} />
-        <KPICard title="Horas registradas" value={summary.data?.horas_mes ?? 0} format="integer" icon={<Clock className="h-4 w-4" />} loading={summary.loading} subtitle="este periodo" />
-        <KPICard title="Coste nomina" value={summary.data?.coste_nomina ?? 0} format="currency" icon={<Euro className="h-4 w-4" />} trendPositive="down" loading={summary.loading} />
+        <KPICard title="Empleados activos" value={summary.data?.empleados_activos ?? 0} previousValue={prevSummary.data?.empleados_activos} format="integer" icon={<Users className="h-4 w-4" />} loading={summary.loading} />
+        <KPICard title="Nuevas altas" value={summary.data?.nuevas_altas ?? 0} previousValue={prevSummary.data?.nuevas_altas} format="integer" icon={<UserPlus className="h-4 w-4" />} trendPositive="up" loading={summary.loading} />
+        <KPICard title="Horas registradas" value={summary.data?.horas_mes ?? 0} previousValue={prevSummary.data?.horas_mes} format="integer" icon={<Clock className="h-4 w-4" />} loading={summary.loading} subtitle="este periodo" />
+        <KPICard title="Coste nomina" value={summary.data?.coste_nomina ?? 0} previousValue={prevSummary.data?.coste_nomina} format="currency" icon={<Euro className="h-4 w-4" />} trendPositive="down" loading={summary.loading} />
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

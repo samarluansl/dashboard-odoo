@@ -35,7 +35,7 @@ type Subscription = {
 };
 
 export default function SuscripcionesPage() {
-  const { companyParam, dateFrom, dateTo } = useCompanyFilter();
+  const { companyParam, dateFrom, dateTo, prevDateFrom, prevDateTo } = useCompanyFilter();
 
   // Filtros y paginación para tabla
   const [subFilter, setSubFilter] = useState('');
@@ -51,7 +51,14 @@ export default function SuscripcionesPage() {
     return p;
   }, [dateFrom, dateTo, companyParam]);
 
+  const prevParams = useMemo(() => {
+    const p: Record<string, string> = { date_from: prevDateFrom, date_to: prevDateTo };
+    if (companyParam) p.company = companyParam;
+    return p;
+  }, [prevDateFrom, prevDateTo, companyParam]);
+
   const summary = useOdooQuery<{ mrr: number; activas: number; nuevas: number; bajas: number; churn_rate: number }>({ url: '/api/subscriptions/summary', params });
+  const prevSummary = useOdooQuery<{ mrr: number; activas: number; nuevas: number; bajas: number; churn_rate: number }>({ url: '/api/subscriptions/summary', params: prevParams });
   const mrrHistory = useOdooQuery<{ data: Array<{ fecha: string; valor: number }> }>({ url: '/api/subscriptions/mrr-history', params });
   const subscriptionsList = useOdooQuery<{ subscriptions: Subscription[] }>({ url: '/api/subscriptions/list', params: companyParam ? { company: companyParam } : {} });
 
@@ -127,10 +134,10 @@ export default function SuscripcionesPage() {
       )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KPICard title="MRR" value={summary.data?.mrr ?? 0} format="currency" icon={<RefreshCw className="h-4 w-4" />} trendPositive="up" loading={summary.loading} subtitle={`${summary.data?.activas ?? 0} activas`} />
-        <KPICard title="Altas" value={summary.data?.nuevas ?? 0} format="integer" icon={<UserPlus className="h-4 w-4" />} trendPositive="up" loading={summary.loading} subtitle="este período" />
-        <KPICard title="Bajas" value={summary.data?.bajas ?? 0} format="integer" icon={<UserMinus className="h-4 w-4" />} trendPositive="down" loading={summary.loading} subtitle="este período" />
-        <KPICard title="Churn rate" value={summary.data?.churn_rate ?? 0} format="percent" icon={<TrendingUp className="h-4 w-4" />} trendPositive="down" loading={summary.loading} />
+        <KPICard title="MRR" value={summary.data?.mrr ?? 0} previousValue={prevSummary.data?.mrr} format="currency" icon={<RefreshCw className="h-4 w-4" />} trendPositive="up" loading={summary.loading} subtitle={`${summary.data?.activas ?? 0} activas`} />
+        <KPICard title="Altas" value={summary.data?.nuevas ?? 0} previousValue={prevSummary.data?.nuevas} format="integer" icon={<UserPlus className="h-4 w-4" />} trendPositive="up" loading={summary.loading} subtitle="este periodo" />
+        <KPICard title="Bajas" value={summary.data?.bajas ?? 0} previousValue={prevSummary.data?.bajas} format="integer" icon={<UserMinus className="h-4 w-4" />} trendPositive="down" loading={summary.loading} subtitle="este periodo" />
+        <KPICard title="Churn rate" value={summary.data?.churn_rate ?? 0} previousValue={prevSummary.data?.churn_rate} format="percent" icon={<TrendingUp className="h-4 w-4" />} trendPositive="down" loading={summary.loading} />
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

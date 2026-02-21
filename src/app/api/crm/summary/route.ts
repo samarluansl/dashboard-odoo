@@ -75,20 +75,32 @@ export async function GET(req: NextRequest) {
     ];
     const bajas = (await execute('crm.lead', 'search_count', [bajasDomain])) as number;
 
-    // Impagos — oportunidades en la etapa "Impagos" (stage_id.name = 'Impagos')
+    // Impagos — etapa ID 19 (sequence 7)
     const impagosDomain: unknown[] = [
       ['active', '=', true],
       ['type', '=', 'opportunity'],
-      ['stage_id.name', '=', 'Impagos'],
+      ['stage_id', '=', 19],
       ...companyDomain,
     ];
     const impagos = (await execute('crm.lead', 'search_count', [impagosDomain])) as number;
 
-    // Valor total de los impagos
-    const impagosGroups = (await execute('crm.lead', 'read_group',
-      [impagosDomain, ['expected_revenue'], []], { lazy: false }
-    )) as Array<{ expected_revenue: number }>;
-    const impagos_value = impagosGroups[0]?.expected_revenue || 0;
+    // Posibles bajas — etapa ID 11 (sequence 8)
+    const posiblesBajasDomain: unknown[] = [
+      ['active', '=', true],
+      ['type', '=', 'opportunity'],
+      ['stage_id', '=', 11],
+      ...companyDomain,
+    ];
+    const posibles_bajas = (await execute('crm.lead', 'search_count', [posiblesBajasDomain])) as number;
+
+    // Clubs activos — etapas: 2 (Firmados), 4 (Arrancado), 11 (Posible baja), 19 (Impagos)
+    const clubsActivosDomain: unknown[] = [
+      ['active', '=', true],
+      ['type', '=', 'opportunity'],
+      ['stage_id', 'in', [2, 4, 11, 19]],
+      ...companyDomain,
+    ];
+    const clubs_activos = (await execute('crm.lead', 'search_count', [clubsActivosDomain])) as number;
 
     return NextResponse.json({
       empresa: label,
@@ -100,7 +112,8 @@ export async function GET(req: NextRequest) {
       altas,
       bajas,
       impagos,
-      impagos_value: round2(impagos_value),
+      posibles_bajas,
+      clubs_activos,
     });
   } catch (err) {
     console.error('API crm/summary error:', err);

@@ -45,6 +45,18 @@ export function trendColor(value: number, positive: 'up' | 'down' = 'up'): strin
   return value < 0 ? 'text-emerald-600' : 'text-red-600';
 }
 
+/** Calcular período anterior de la misma duración */
+export function getPreviousDateRange(from: string, to: string): { from: string; to: string } {
+  const fromDate = new Date(from + 'T00:00:00');
+  const toDate = new Date(to + 'T00:00:00');
+  const diffMs = toDate.getTime() - fromDate.getTime();
+  const prevTo = new Date(fromDate.getTime() - 86400000); // día anterior al from
+  const prevFrom = new Date(prevTo.getTime() - diffMs);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const fmt = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return { from: fmt(prevFrom), to: fmt(prevTo) };
+}
+
 /** Períodos rápidos */
 export function getDateRange(period: string): { from: string; to: string } {
   const now = new Date();
