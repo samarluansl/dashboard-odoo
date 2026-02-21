@@ -128,8 +128,26 @@ function StageMultiSelect({
 }
 
 type CRMSummary = { oportunidades_activas: number; pipeline_value: number; ganadas: number; perdidas: number; tasa_conversion: number; altas: number; bajas: number; impagos: number; posibles_bajas: number; clubs_activos: number };
-type DealSortField = 'expected_revenue' | 'partner' | 'stage' | 'probability';
+type Club = { name: string; partner: string; stage: string; stage_id: number; fecha_alta: string | null; ingreso: number };
+type ClubSortField = 'name' | 'partner' | 'stage' | 'ingreso';
 type SortDir = 'asc' | 'desc';
+
+// Etapas CRM en orden del pipeline (hardcoded por ID)
+const CRM_STAGE_ORDER = [
+  'Forms',
+  'BBDD / Potenciales clientes',
+  'Negociando Oportunidad',
+  'Contrato en preparación',
+  'Contrato enviado',
+  'Firmados + Proceso Onboarding + MKT',
+  'Arrancado',
+  'Impagos',
+  'Posible baja',
+  'Standby',
+  'No interesados',
+  'Perdidos',
+  'Clubes sin respuesta',
+];
 
 export default function CRMPage() {
   const { companyParam, dateFrom, dateTo, prevDateFrom, prevDateTo } = useCompanyFilter();
@@ -137,13 +155,13 @@ export default function CRMPage() {
   // Filtros pipeline
   const [selectedStages, setSelectedStages] = useState<string[]>([]);
 
-  // Filtros top deals
-  const [dealFilter, setDealFilter] = useState('');
-  const [dealStageFilter, setDealStageFilter] = useState<string[]>([]);
-  const [dealSort, setDealSort] = useState<DealSortField>('expected_revenue');
-  const [dealSortDir, setDealSortDir] = useState<SortDir>('desc');
-  const [dealPage, setDealPage] = useState(1);
-  const DEAL_PAGE_SIZE = 15;
+  // Filtros tabla clubs
+  const [clubFilter, setClubFilter] = useState('');
+  const [clubStageFilter, setClubStageFilter] = useState<string[]>([]);
+  const [clubSort, setClubSort] = useState<ClubSortField>('ingreso');
+  const [clubSortDir, setClubSortDir] = useState<SortDir>('desc');
+  const [clubPage, setClubPage] = useState(1);
+  const CLUB_PAGE_SIZE = 15;
 
   const params = useMemo(() => {
     const p: Record<string, string> = { date_from: dateFrom, date_to: dateTo };
@@ -160,15 +178,10 @@ export default function CRMPage() {
   const summary = useOdooQuery<CRMSummary>({ url: '/api/crm/summary', params });
   const prevSummary = useOdooQuery<CRMSummary>({ url: '/api/crm/summary', params: prevParams });
   const pipeline = useOdooQuery<{ stages: Array<{ name: string; value: number; count: number; color?: string }> }>({ url: '/api/crm/pipeline', params: companyParam ? { company: companyParam } : {} });
-  const topDeals = useOdooQuery<{ deals: Array<{ name: string; partner: string; expected_revenue: number; stage: string; probability: number }> }>({ url: '/api/crm/top-deals', params: companyParam ? { company: companyParam } : {} });
+  const clubsList = useOdooQuery<{ clubs: Club[] }>({ url: '/api/crm/top-deals', params });
 
-  // Etapas únicas para filtros
-  const allStages = useMemo(() => {
-    const stages = new Set<string>();
-    pipeline.data?.stages?.forEach(s => stages.add(s.name));
-    topDeals.data?.deals?.forEach(d => stages.add(d.stage));
-    return [...stages].sort();
-  }, [pipeline.data, topDeals.data]);
+  // Etapas para filtros — siempre las 13 en orden del pipeline
+  const allStages = CRM_STAGE_ORDER;
 
   // Pipeline filtrado por etapas seleccionadas
   const filteredPipeline = useMemo(() => {
@@ -185,51 +198,54 @@ export default function CRMPage() {
     return { count, value };
   }, [filteredPipeline, selectedStages, summary.data]);
 
-  // Top deals: filtrar, ordenar, paginar
-  const processedDeals = useMemo(() => {
-    let list = topDeals.data?.deals || [];
+  // Clubs: filtrar, ordenar, paginar
+  const processedClubs = useMemo(() => {
+    let list = clubsList.data?.clubs || [];
 
-    // Filtro por cliente
-    if (dealFilter.trim()) {
-      const q = dealFilter.toLowerCase();
-      list = list.filter(d => d.partner.toLowerCase().includes(q) || d.name.toLowerCase().includes(q));
+    // Filtro global de etapas (el de arriba)
+    if (selectedStages.length > 0) {
+      list = list.filter(c => selectedStages.includes(c.stage));
     }
 
-    // Filtro por etapa(s)
-    if (dealStageFilter.length > 0) {
-      list = list.filter(d => dealStageFilter.includes(d.stage));
+    if (clubFilter.trim()) {
+      const q = clubFilter.toLowerCase();
+      list = list.filter(c => c.partner.toLowerCase().includes(q) || c.name.toLowerCase().includes(q));
     }
 
-    // Ordenar
+    // Filtro adicional de etapas dentro de la tabla
+    if (clubStageFilter.length > 0) {
+      list = list.filter(c => clubStageFilter.includes(c.stage));
+    }
+
     list = [...list].sort((a, b) => {
       let cmp = 0;
-      switch (dealSort) {
-        case 'expected_revenue': cmp = a.expected_revenue - b.expected_revenue; break;
+      switch (clubSort) {
+        case 'name': cmp = a.name.localeCompare(b.name); break;
         case 'partner': cmp = a.partner.localeCompare(b.partner); break;
         case 'stage': cmp = a.stage.localeCompare(b.stage); break;
-        case 'probability': cmp = a.probability - b.probability; break;
+        case 'ingreso': cmp = a.ingreso - b.ingreso; break;
       }
-      return dealSortDir === 'asc' ? cmp : -cmp;
+      return clubSortDir === 'asc' ? cmp : -cmp;
     });
 
     return list;
-  }, [topDeals.data, dealFilter, dealStageFilter, dealSort, dealSortDir]);
+  }, [clubsList.data, selectedStages, clubFilter, clubStageFilter, clubSort, clubSortDir]);
 
-  const dealTotalPages = Math.max(1, Math.ceil(processedDeals.length / DEAL_PAGE_SIZE));
-  const paginatedDeals = processedDeals.slice((dealPage - 1) * DEAL_PAGE_SIZE, dealPage * DEAL_PAGE_SIZE);
+  const clubTotalPages = Math.max(1, Math.ceil(processedClubs.length / CLUB_PAGE_SIZE));
+  const paginatedClubs = processedClubs.slice((clubPage - 1) * CLUB_PAGE_SIZE, clubPage * CLUB_PAGE_SIZE);
 
-  const handleDealSort = (field: DealSortField) => {
-    if (dealSort === field) {
-      setDealSortDir(d => d === 'asc' ? 'desc' : 'asc');
+  const handleClubSort = (field: ClubSortField) => {
+    if (clubSort === field) {
+      setClubSortDir(d => d === 'asc' ? 'desc' : 'asc');
     } else {
-      setDealSort(field);
-      setDealSortDir('desc');
+      setClubSort(field);
+      setClubSortDir('desc');
     }
-    setDealPage(1);
+    setClubPage(1);
   };
 
-  const SortIcon = ({ field }: { field: DealSortField }) => (
-    <ArrowUpDown className={`inline h-3 w-3 ml-1 ${dealSort === field ? 'text-blue-600' : 'text-gray-300'}`} />
+  const SortIcon = ({ field }: { field: ClubSortField }) => (
+    <ArrowUpDown className={`inline h-3 w-3 ml-1 ${clubSort === field ? 'text-blue-600' : 'text-gray-300'}`} />
   );
 
   const d = summary.data;
@@ -242,8 +258,8 @@ export default function CRMPage() {
         <p className="text-sm text-gray-500">Pipeline, conversiones y oportunidades</p>
       </div>
 
-      {(summary.error || pipeline.error || topDeals.error) && (
-        <ErrorMessage message={summary.error || pipeline.error || topDeals.error} onRetry={() => { summary.refetch(); pipeline.refetch(); topDeals.refetch(); }} />
+      {(summary.error || pipeline.error || clubsList.error) && (
+        <ErrorMessage message={summary.error || pipeline.error || clubsList.error} onRetry={() => { summary.refetch(); pipeline.refetch(); clubsList.refetch(); }} />
       )}
 
       {/* Filtro por etapas */}
@@ -259,7 +275,7 @@ export default function CRMPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
         <KPICard title="Clubs activos" value={d?.clubs_activos ?? 0} previousValue={p?.clubs_activos} format="integer" icon={<CheckCircle className="h-4 w-4" />} trendPositive="up" loading={summary.loading} subtitle="clubs" />
         <KPICard title="Oportunidades" value={filteredOps.count} previousValue={p?.oportunidades_activas} format="integer" icon={<Target className="h-4 w-4" />} loading={summary.loading} />
         <KPICard title="Altas" value={d?.altas ?? 0} previousValue={p?.altas} format="integer" icon={<UserPlus className="h-4 w-4" />} trendPositive="up" loading={summary.loading} subtitle="este periodo" />
@@ -326,99 +342,105 @@ export default function CRMPage() {
         </CardContent>
       </Card>
 
-      {/* Top oportunidades — con filtros y paginación */}
+      {/* Clubs — tabla con ingreso facturado, filtros y paginación */}
       <Card>
         <CardHeader>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between w-full">
-            <CardTitle>Top oportunidades</CardTitle>
+            <div className="flex items-center gap-3">
+              <CardTitle>Clubs</CardTitle>
+              {clubsList.data && (
+                <Badge variant="default">{clubsList.data.clubs.length} clubs</Badge>
+              )}
+            </div>
             <div className="flex flex-wrap gap-2">
-              {/* Filtro por cliente */}
               <div className="relative">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <input
                   type="text"
-                  placeholder="Filtrar cliente..."
-                  value={dealFilter}
-                  onChange={e => { setDealFilter(e.target.value); setDealPage(1); }}
-                  className="rounded-lg border border-gray-300 bg-white pl-9 pr-3 py-1.5 text-sm text-gray-700 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 w-44"
+                  placeholder="Buscar club..."
+                  value={clubFilter}
+                  onChange={e => { setClubFilter(e.target.value); setClubPage(1); }}
+                  className="rounded-lg border border-gray-300 bg-white pl-9 pr-3 py-1.5 text-sm text-gray-700 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 w-full sm:w-44"
                 />
               </div>
-              {/* Filtro por etapa */}
               <StageMultiSelect
                 stages={allStages}
-                selected={dealStageFilter}
-                onChange={(stages) => { setDealStageFilter(stages); setDealPage(1); }}
+                selected={clubStageFilter}
+                onChange={(stages) => { setClubStageFilter(stages); setClubPage(1); }}
                 placeholder="Todas las etapas"
               />
             </div>
           </div>
         </CardHeader>
         <CardContent>
-          {topDeals.loading ? (
+          {clubsList.loading ? (
             <div className="space-y-2">{[1,2,3,4].map(i => <div key={i} className="h-8 bg-gray-100 rounded animate-pulse" />)}</div>
-          ) : processedDeals.length > 0 ? (
+          ) : processedClubs.length > 0 ? (
             <>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+              <div className="overflow-x-auto -mx-2 px-2">
+                <table className="w-full text-sm min-w-[480px]">
                   <thead>
                     <tr className="border-b border-gray-200 text-left text-gray-500">
-                      <th className="pb-2 font-medium">Oportunidad</th>
-                      <th className="pb-2 font-medium cursor-pointer select-none hover:text-gray-900" onClick={() => handleDealSort('partner')}>
+                      <th className="pb-2 font-medium cursor-pointer select-none hover:text-gray-900" onClick={() => handleClubSort('name')}>
+                        Club <SortIcon field="name" />
+                      </th>
+                      <th className="pb-2 font-medium cursor-pointer select-none hover:text-gray-900 hidden sm:table-cell" onClick={() => handleClubSort('partner')}>
                         Cliente <SortIcon field="partner" />
                       </th>
-                      <th className="pb-2 font-medium text-right cursor-pointer select-none hover:text-gray-900" onClick={() => handleDealSort('expected_revenue')}>
-                        Importe <SortIcon field="expected_revenue" />
+                      <th className="pb-2 font-medium text-right cursor-pointer select-none hover:text-gray-900" onClick={() => handleClubSort('ingreso')}>
+                        Ingreso <SortIcon field="ingreso" />
                       </th>
-                      <th className="pb-2 font-medium cursor-pointer select-none hover:text-gray-900" onClick={() => handleDealSort('stage')}>
+                      <th className="pb-2 font-medium cursor-pointer select-none hover:text-gray-900" onClick={() => handleClubSort('stage')}>
                         Etapa <SortIcon field="stage" />
-                      </th>
-                      <th className="pb-2 font-medium text-right cursor-pointer select-none hover:text-gray-900" onClick={() => handleDealSort('probability')}>
-                        Prob. <SortIcon field="probability" />
                       </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {paginatedDeals.map((deal, i) => (
+                    {paginatedClubs.map((club, i) => (
                       <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
-                        <td className="py-2 text-gray-900 font-medium truncate max-w-[200px]">{deal.name}</td>
-                        <td className="py-2 text-gray-600 truncate max-w-[150px]">{deal.partner}</td>
-                        <td className="py-2 text-right font-semibold text-gray-900 whitespace-nowrap">{fmtEur2(deal.expected_revenue)}</td>
-                        <td className="py-2"><Badge variant="info">{deal.stage}</Badge></td>
-                        <td className="py-2 text-right text-gray-500">{deal.probability}%</td>
+                        <td className="py-2">
+                          <div className="text-gray-900 font-medium truncate max-w-[200px]">{club.name}</div>
+                          <div className="text-xs text-gray-400 truncate max-w-[200px] sm:hidden">{club.partner}</div>
+                        </td>
+                        <td className="py-2 text-gray-600 truncate max-w-[150px] hidden sm:table-cell">{club.partner}</td>
+                        <td className="py-2 text-right font-semibold text-gray-900 whitespace-nowrap">{club.ingreso > 0 ? fmtEur2(club.ingreso) : <span className="text-gray-300">—</span>}</td>
+                        <td className="py-2"><Badge variant="info">{club.stage}</Badge></td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
 
-              {/* Paginacion */}
+              {/* Paginacion — siempre visible */}
               <div className="flex items-center justify-between pt-4 border-t border-gray-100 mt-3">
                 <p className="text-xs text-gray-500">
-                  {processedDeals.length} oportunidades{dealFilter || dealStageFilter.length > 0 ? ` (filtrado de ${topDeals.data?.deals?.length || 0})` : ''}
+                  {processedClubs.length} clubs{clubFilter || clubStageFilter.length > 0 ? ` (filtrado de ${clubsList.data?.clubs?.length || 0})` : ''}
                 </p>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setDealPage(p => Math.max(1, p - 1))}
-                    disabled={dealPage <= 1}
-                    className="rounded-lg p-1.5 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
-                  >
-                    <ChevronLeft className="h-4 w-4 text-gray-600" />
-                  </button>
-                  <span className="text-sm text-gray-600">{dealPage} / {dealTotalPages}</span>
-                  <button
-                    onClick={() => setDealPage(p => Math.min(dealTotalPages, p + 1))}
-                    disabled={dealPage >= dealTotalPages}
-                    className="rounded-lg p-1.5 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
-                  >
-                    <ChevronRight className="h-4 w-4 text-gray-600" />
-                  </button>
-                </div>
+                {clubTotalPages > 1 && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setClubPage(p => Math.max(1, p - 1))}
+                      disabled={clubPage <= 1}
+                      className="rounded-lg p-1.5 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      <ChevronLeft className="h-4 w-4 text-gray-600" />
+                    </button>
+                    <span className="text-sm text-gray-600">{clubPage} / {clubTotalPages}</span>
+                    <button
+                      onClick={() => setClubPage(p => Math.min(clubTotalPages, p + 1))}
+                      disabled={clubPage >= clubTotalPages}
+                      className="rounded-lg p-1.5 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      <ChevronRight className="h-4 w-4 text-gray-600" />
+                    </button>
+                  </div>
+                )}
               </div>
             </>
-          ) : topDeals.data?.deals?.length && (dealFilter || dealStageFilter.length > 0) ? (
-            <p className="text-sm text-gray-500">No se encontraron oportunidades con los filtros aplicados</p>
+          ) : clubsList.data?.clubs?.length && (clubFilter || clubStageFilter.length > 0) ? (
+            <p className="text-sm text-gray-500">No se encontraron clubs con los filtros aplicados</p>
           ) : (
-            <p className="text-sm text-gray-400">Sin oportunidades</p>
+            <p className="text-sm text-gray-400">Sin clubs</p>
           )}
         </CardContent>
       </Card>
