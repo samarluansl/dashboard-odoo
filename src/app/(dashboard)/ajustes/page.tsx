@@ -9,8 +9,10 @@ import { cn } from '@/lib/utils';
 import {
   User, Users, Plus, Pencil, Trash2, X,
   Check, ChevronDown, Phone, Mail, Shield, Building2, MessageCircle,
+  Bell, Clock, Calendar, Loader2,
 } from 'lucide-react';
 import { COMPANIES } from '@/lib/companies';
+import { ALERT_TYPES } from '@/lib/alert-types';
 
 const ROLES = [
   { value: 'admin', label: 'Admin', color: 'info' as const },
@@ -109,6 +111,150 @@ function CompanyMultiSelect({ selected, onChange }: { selected: string[]; onChan
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ── Sección de notificaciones WhatsApp ── */
+function NotificationPreferences({ token }: { token: string }) {
+  const [prefs, setPrefs] = useState<Record<string, boolean>>({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [feedback, setFeedback] = useState('');
+
+  useEffect(() => {
+    if (!token) return;
+    fetch('/api/notifications', { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(data => { setPrefs(data.preferences || {}); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, [token]);
+
+  const toggle = (key: string) => {
+    setPrefs(p => ({ ...p, [key]: !p[key] }));
+    setDirty(true);
+  };
+
+  const toggleAll = (enabled: boolean) => {
+    const updated: Record<string, boolean> = {};
+    for (const at of ALERT_TYPES) updated[at.value] = enabled;
+    setPrefs(updated);
+    setDirty(true);
+  };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch('/api/notifications', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ preferences: prefs }),
+      });
+      if (res.ok) {
+        setDirty(false);
+        setFeedback('Preferencias guardadas');
+        setTimeout(() => setFeedback(''), 2500);
+      }
+    } catch { /* ignore */ }
+    setSaving(false);
+  };
+
+  const enabledCount = Object.values(prefs).filter(Boolean).length;
+  const allEnabled = enabledCount === ALERT_TYPES.length;
+  const noneEnabled = enabledCount === 0;
+
+  // Agrupar por frecuencia
+  const groups: { label: string; icon: React.ReactNode; items: typeof ALERT_TYPES }[] = [
+    { label: 'Diarias', icon: <Clock className="h-3.5 w-3.5" />, items: ALERT_TYPES.filter(a => a.frequency === 'Diario') },
+    { label: 'Semanales', icon: <Calendar className="h-3.5 w-3.5" />, items: ALERT_TYPES.filter(a => a.frequency === 'Semanal') },
+    { label: 'Mensuales', icon: <Calendar className="h-3.5 w-3.5" />, items: ALERT_TYPES.filter(a => a.frequency === 'Mensual') },
+  ];
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Header con acciones */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Badge variant={enabledCount > 0 ? 'success' : 'default'}>
+            {enabledCount} de {ALERT_TYPES.length} activas
+          </Badge>
+          {feedback && (
+            <span className="text-xs text-emerald-600 font-medium">{feedback}</span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => toggleAll(!allEnabled)}
+            className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+          >
+            {allEnabled ? 'Desactivar todas' : noneEnabled ? 'Activar todas' : 'Activar todas'}
+          </button>
+          {dirty && (
+            <Button size="sm" onClick={save} disabled={saving}>
+              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Check className="h-3.5 w-3.5 mr-1" />}
+              Guardar
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Grupos de alertas */}
+      {groups.map(group => (
+        <div key={group.label}>
+          <div className="flex items-center gap-2 mb-2">
+            {group.icon}
+            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{group.label}</h4>
+          </div>
+          <div className="space-y-1">
+            {group.items.map(alert => {
+              const enabled = prefs[alert.value] ?? false;
+              return (
+                <button
+                  key={alert.value}
+                  type="button"
+                  onClick={() => toggle(alert.value)}
+                  className={cn(
+                    'flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors',
+                    enabled ? 'bg-emerald-50 hover:bg-emerald-100' : 'bg-gray-50 hover:bg-gray-100',
+                  )}
+                >
+                  {/* Toggle visual */}
+                  <div className={cn(
+                    'flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors',
+                    enabled ? 'bg-emerald-500' : 'bg-gray-300',
+                  )}>
+                    <div className={cn(
+                      'h-4 w-4 rounded-full bg-white shadow-sm transition-transform',
+                      enabled ? 'translate-x-4' : 'translate-x-0',
+                    )} />
+                  </div>
+
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className={cn('text-sm font-medium', enabled ? 'text-gray-900' : 'text-gray-500')}>
+                        {alert.label}
+                      </span>
+                      <span className="text-xs text-gray-400">{alert.defaultTime}</span>
+                    </div>
+                    <p className="text-xs text-gray-400 truncate">{alert.description}</p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -252,6 +398,23 @@ export default function AjustesPage() {
               {ROLES.find(r => r.value === currentUser?.role)?.label || currentUser?.role}
             </Badge>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Notificaciones WhatsApp — visible para todos los usuarios */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Bell className="h-4 w-4" />
+            Notificaciones WhatsApp
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {token ? (
+            <NotificationPreferences token={token} />
+          ) : (
+            <p className="text-sm text-gray-400 text-center py-4">Cargando...</p>
+          )}
         </CardContent>
       </Card>
 
