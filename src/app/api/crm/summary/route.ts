@@ -57,21 +57,20 @@ export async function GET(req: NextRequest) {
     const total_cerradas = ganadas + perdidas;
     const tasa_conversion = total_cerradas > 0 ? round2((ganadas / total_cerradas) * 100) : 0;
 
-    // Altas (oportunidades creadas en el período)
+    // Altas — fecha de firma/alta (campo Odoo Studio: x_studio_fecha_firma_alta, datetime)
     const altasDomain: unknown[] = [
       ['type', '=', 'opportunity'],
-      ['create_date', '>=', date_from],
-      ['create_date', '<=', date_to],
+      ['x_studio_fecha_firma_alta', '>=', date_from],
+      ['x_studio_fecha_firma_alta', '<=', date_to],
       ...companyDomain,
     ];
     const altas = (await execute('crm.lead', 'search_count', [altasDomain])) as number;
 
-    // Bajas (oportunidades perdidas/archivadas en el período)
+    // Bajas — fecha de baja (campo Odoo Studio: x_studio_fecha_baja, date)
     const bajasDomain: unknown[] = [
-      ['active', '=', false],
       ['type', '=', 'opportunity'],
-      ['date_closed', '>=', date_from],
-      ['date_closed', '<=', date_to],
+      ['x_studio_fecha_baja', '>=', date_from],
+      ['x_studio_fecha_baja', '<=', date_to],
       ...companyDomain,
     ];
     const bajas = (await execute('crm.lead', 'search_count', [bajasDomain])) as number;
