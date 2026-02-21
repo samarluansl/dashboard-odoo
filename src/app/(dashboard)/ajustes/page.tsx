@@ -12,7 +12,7 @@ import {
   Bell, Clock, Calendar, Loader2,
 } from 'lucide-react';
 import { COMPANIES } from '@/lib/companies';
-import { ALERT_TYPES } from '@/lib/alert-types';
+import { ALERT_TYPES, FREQUENCY_OPTIONS, DAY_OPTIONS, type FrequencyOption } from '@/lib/alert-types';
 
 const ROLES = [
   { value: 'admin', label: 'Admin', color: 'info' as const },
@@ -116,8 +116,15 @@ function CompanyMultiSelect({ selected, onChange }: { selected: string[]; onChan
 }
 
 /* ── Sección de notificaciones WhatsApp ── */
+interface AlertPref {
+  enabled: boolean;
+  frequency: FrequencyOption;
+  preferred_day: number | null;
+  preferred_time: string;
+}
+
 function NotificationPreferences({ token }: { token: string }) {
-  const [prefs, setPrefs] = useState<Record<string, boolean>>({});
+  const [prefs, setPrefs] = useState<Record<string, AlertPref>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -131,15 +138,30 @@ function NotificationPreferences({ token }: { token: string }) {
       .catch(() => setLoading(false));
   }, [token]);
 
-  const toggle = (key: string) => {
-    setPrefs(p => ({ ...p, [key]: !p[key] }));
+  const toggleEnabled = (key: string) => {
+    setPrefs(p => ({
+      ...p,
+      [key]: { ...p[key], enabled: !p[key]?.enabled },
+    }));
+    setDirty(true);
+  };
+
+  const updatePref = (key: string, field: keyof AlertPref, value: AlertPref[keyof AlertPref]) => {
+    setPrefs(p => ({
+      ...p,
+      [key]: { ...p[key], [field]: value },
+    }));
     setDirty(true);
   };
 
   const toggleAll = (enabled: boolean) => {
-    const updated: Record<string, boolean> = {};
-    for (const at of ALERT_TYPES) updated[at.value] = enabled;
-    setPrefs(updated);
+    setPrefs(p => {
+      const updated = { ...p };
+      for (const at of ALERT_TYPES) {
+        updated[at.value] = { ...updated[at.value], enabled };
+      }
+      return updated;
+    });
     setDirty(true);
   };
 
@@ -160,11 +182,11 @@ function NotificationPreferences({ token }: { token: string }) {
     setSaving(false);
   };
 
-  const enabledCount = Object.values(prefs).filter(Boolean).length;
+  const enabledCount = Object.values(prefs).filter(p => p?.enabled).length;
   const allEnabled = enabledCount === ALERT_TYPES.length;
   const noneEnabled = enabledCount === 0;
 
-  // Agrupar por frecuencia
+  // Agrupar por frecuencia ORIGINAL de la alerta
   const groups: { label: string; icon: React.ReactNode; items: typeof ALERT_TYPES }[] = [
     { label: 'Diarias', icon: <Clock className="h-3.5 w-3.5" />, items: ALERT_TYPES.filter(a => a.frequency === 'Diario') },
     { label: 'Semanales', icon: <Calendar className="h-3.5 w-3.5" />, items: ALERT_TYPES.filter(a => a.frequency === 'Semanal') },
@@ -215,41 +237,102 @@ function NotificationPreferences({ token }: { token: string }) {
             {group.icon}
             <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{group.label}</h4>
           </div>
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             {group.items.map(alert => {
-              const enabled = prefs[alert.value] ?? false;
+              const pref = prefs[alert.value];
+              const enabled = pref?.enabled ?? false;
+              const freq = pref?.frequency ?? alert.frequency;
+              const needsDay = freq === 'Semanal' || freq === 'Quincenal';
+              const freqChanged = freq !== alert.frequency;
+
               return (
-                <button
+                <div
                   key={alert.value}
-                  type="button"
-                  onClick={() => toggle(alert.value)}
                   className={cn(
-                    'flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors',
-                    enabled ? 'bg-emerald-50 hover:bg-emerald-100' : 'bg-gray-50 hover:bg-gray-100',
+                    'rounded-lg px-3 py-2.5 transition-colors',
+                    enabled ? 'bg-emerald-50' : 'bg-gray-50',
                   )}
                 >
-                  {/* Toggle visual */}
-                  <div className={cn(
-                    'flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors',
-                    enabled ? 'bg-emerald-500' : 'bg-gray-300',
-                  )}>
+                  {/* Fila principal: toggle + info */}
+                  <button
+                    type="button"
+                    onClick={() => toggleEnabled(alert.value)}
+                    className="flex w-full items-center gap-3 text-left"
+                  >
+                    {/* Toggle visual */}
                     <div className={cn(
-                      'h-4 w-4 rounded-full bg-white shadow-sm transition-transform',
-                      enabled ? 'translate-x-4' : 'translate-x-0',
-                    )} />
-                  </div>
-
-                  {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className={cn('text-sm font-medium', enabled ? 'text-gray-900' : 'text-gray-500')}>
-                        {alert.label}
-                      </span>
-                      <span className="text-xs text-gray-400">{alert.defaultTime}</span>
+                      'flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors',
+                      enabled ? 'bg-emerald-500' : 'bg-gray-300',
+                    )}>
+                      <div className={cn(
+                        'h-4 w-4 rounded-full bg-white shadow-sm transition-transform',
+                        enabled ? 'translate-x-4' : 'translate-x-0',
+                      )} />
                     </div>
-                    <p className="text-xs text-gray-400 truncate">{alert.description}</p>
-                  </div>
-                </button>
+
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className={cn('text-sm font-medium', enabled ? 'text-gray-900' : 'text-gray-500')}>
+                          {alert.label}
+                        </span>
+                        {freqChanged && (
+                          <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-medium">
+                            {freq}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-400 truncate">{alert.description}</p>
+                    </div>
+                  </button>
+
+                  {/* Controles de schedule (solo cuando enabled) */}
+                  {enabled && (
+                    <div className="mt-2 ml-12 flex flex-wrap items-center gap-2">
+                      {/* Frecuencia */}
+                      <select
+                        value={freq}
+                        onChange={e => {
+                          const newFreq = e.target.value as FrequencyOption;
+                          updatePref(alert.value, 'frequency', newFreq);
+                          // Si cambia a diario o mensual, limpiar día
+                          if (newFreq === 'Diario' || newFreq === 'Mensual') {
+                            updatePref(alert.value, 'preferred_day', null);
+                          } else if (pref?.preferred_day == null) {
+                            // Si cambia a semanal/quincenal y no tiene día, poner lunes
+                            updatePref(alert.value, 'preferred_day', 0);
+                          }
+                        }}
+                        className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      >
+                        {FREQUENCY_OPTIONS.map(f => (
+                          <option key={f.value} value={f.value}>{f.label}</option>
+                        ))}
+                      </select>
+
+                      {/* Día (solo semanal/quincenal) */}
+                      {needsDay && (
+                        <select
+                          value={pref?.preferred_day ?? 0}
+                          onChange={e => updatePref(alert.value, 'preferred_day', parseInt(e.target.value))}
+                          className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        >
+                          {DAY_OPTIONS.map(d => (
+                            <option key={d.value} value={d.value}>{d.label}</option>
+                          ))}
+                        </select>
+                      )}
+
+                      {/* Hora */}
+                      <input
+                        type="time"
+                        value={pref?.preferred_time ?? alert.defaultTime}
+                        onChange={e => updatePref(alert.value, 'preferred_time', e.target.value)}
+                        className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>

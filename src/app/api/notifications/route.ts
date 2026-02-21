@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
 import { supabase } from '@/lib/supabase';
-import { ALERT_TYPES } from '@/lib/alert-types';
+import { ALERT_TYPES, type FrequencyOption } from '@/lib/alert-types';
+
+/** Preferencia expandida con schedule */
+export interface AlertPreference {
+  enabled: boolean;
+  frequency: FrequencyOption;
+  preferred_day: number | null;
+  preferred_time: string;
+}
 
 /** Obtener usuario autenticado */
 async function getAuthUser(req: NextRequest) {
@@ -23,10 +31,10 @@ export async function GET(req: NextRequest) {
 
   const sb = createServerClient();
 
-  // Cargar preferencias existentes
+  // Cargar preferencias existentes (incluido campos de schedule)
   const { data: prefs, error } = await sb
     .from('notification_preferences')
-    .select('alert_type, enabled')
+    .select('alert_type, enabled, frequency, preferred_day, preferred_time')
     .eq('user_id', user.id);
 
   if (error) {
@@ -34,11 +42,18 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Error al obtener preferencias' }, { status: 500 });
   }
 
-  // Construir mapa: alert_type → enabled (si no existe, false por defecto)
-  const prefsMap: Record<string, boolean> = {};
+  // Construir mapa con defaults para cada alert type
+  const prefsMap: Record<string, AlertPreference> = {};
   for (const at of ALERT_TYPES) {
     const found = prefs?.find(p => p.alert_type === at.value);
-    prefsMap[at.value] = found ? found.enabled : false;
+    prefsMap[at.value] = {
+      enabled: found ? found.enabled : false,
+      frequency: (found?.frequency && found.frequency !== 'default'
+        ? found.frequency
+        : at.frequency) as FrequencyOption,
+      preferred_day: found?.preferred_day ?? (at.frequency === 'Semanal' ? 0 : null),
+      preferred_time: found?.preferred_time ?? at.defaultTime,
+    };
   }
 
   return NextResponse.json({ preferences: prefsMap });
@@ -53,7 +68,7 @@ export async function PUT(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { preferences } = body as { preferences: Record<string, boolean> };
+    const { preferences } = body as { preferences: Record<string, AlertPreference | boolean> };
 
     if (!preferences || typeof preferences !== 'object') {
       return NextResponse.json({ error: 'Se requiere un objeto preferences' }, { status: 400 });
@@ -65,12 +80,33 @@ export async function PUT(req: NextRequest) {
     // Upsert cada preferencia
     const upserts = Object.entries(preferences)
       .filter(([key]) => validTypes.includes(key))
-      .map(([alert_type, enabled]) => ({
-        user_id: user.id,
-        alert_type,
-        enabled,
-        updated_at: new Date().toISOString(),
-      }));
+      .map(([alert_type, value]) => {
+        const alertDef = ALERT_TYPES.find(a => a.value === alert_type)!;
+
+        // Compatibilidad: si es boolean, solo toggle enabled
+        if (typeof value === 'boolean') {
+          return {
+            user_id: user.id,
+            alert_type,
+            enabled: value,
+            updated_at: new Date().toISOString(),
+          };
+        }
+
+        // Objeto completo con schedule
+        const freq = value.frequency || alertDef.frequency;
+        return {
+          user_id: user.id,
+          alert_type,
+          enabled: value.enabled,
+          frequency: freq === alertDef.frequency ? 'default' : freq,
+          preferred_day: (freq === 'Semanal' || freq === 'Quincenal')
+            ? (value.preferred_day ?? 0)
+            : null,
+          preferred_time: value.preferred_time || alertDef.defaultTime,
+          updated_at: new Date().toISOString(),
+        };
+      });
 
     if (upserts.length > 0) {
       const { error } = await sb

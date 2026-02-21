@@ -10,7 +10,7 @@ import { useOdooQuery } from '@/lib/hooks/useOdooQuery';
 import { useCompanyFilter } from '@/lib/context/CompanyContext';
 import { fmtEur2, fmtDate } from '@/lib/utils';
 import type { FinancialSummary, CashFlowData } from '@/types';
-import { TrendingUp, CreditCard, ArrowDownCircle, ArrowUpCircle, ChevronLeft, ChevronRight, ArrowUpDown, Search } from 'lucide-react';
+import { TrendingUp, CreditCard, ArrowDownCircle, ArrowUpCircle, ChevronLeft, ChevronRight, ArrowUpDown, Search, AlertTriangle } from 'lucide-react';
 
 type SortField = 'partner' | 'amount' | 'due_date' | 'days_overdue';
 type SortDir = 'asc' | 'desc';
@@ -103,10 +103,11 @@ export default function FinancieroPage() {
       )}
 
       {/* KPIs */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <KPICard title="Ingresos" value={financial.data?.explotacion.ingresos ?? 0} format="currency" icon={<ArrowDownCircle className="h-4 w-4" />} loading={financial.loading} />
         <KPICard title="Gastos" value={Math.abs(financial.data?.explotacion.gastos ?? 0)} format="currency" icon={<ArrowUpCircle className="h-4 w-4" />} trendPositive="down" loading={financial.loading} />
         <KPICard title="Resultado" value={financial.data?.resultado_antes_impuestos ?? 0} format="currency" icon={<TrendingUp className="h-4 w-4" />} loading={financial.loading} />
+        <KPICard title="Impagos" value={overdueInvoices.data?.total ?? 0} format="currency" icon={<AlertTriangle className="h-4 w-4" />} trendPositive="down" loading={overdueInvoices.loading} subtitle={`${overdueInvoices.data?.count ?? 0} facturas vencidas`} />
         <KPICard title="DSO" value={dso.data?.dso ?? 0} format="days" icon={<CreditCard className="h-4 w-4" />} trendPositive="down" loading={dso.loading} subtitle="dias de cobro" />
       </div>
 

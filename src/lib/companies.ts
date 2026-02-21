@@ -24,6 +24,7 @@ export const COMPANIES: Company[] = [
   { value: 'Dayful',         label: 'Dayful Studio S.L.',             shortLabel: 'Dayful Studio' },
   { value: 'DSU',            label: 'Domotic Systems Unit S.L.',      shortLabel: 'Domotic Systems' },
   { value: 'Gasmedia',       label: 'Gasmedia Systems, S.L.',         shortLabel: 'Gasmedia Systems' },
+  { value: 'Grupo',          label: 'Grupo Samarluan S.L.',           shortLabel: 'Grupo' },
   { value: 'Lucky Losers',   label: 'Lucky Losers Clothes, S.L.',     shortLabel: 'Lucky Losers' },
   { value: 'Matches Padel',  label: 'Matches Padel Solutions S.L.',   shortLabel: 'Matches Padel' },
   { value: 'Menthor',        label: 'Menthor Padel Academy SL',       shortLabel: 'Menthor Padel' },

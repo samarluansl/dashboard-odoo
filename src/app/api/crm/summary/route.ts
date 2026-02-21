@@ -57,6 +57,40 @@ export async function GET(req: NextRequest) {
     const total_cerradas = ganadas + perdidas;
     const tasa_conversion = total_cerradas > 0 ? round2((ganadas / total_cerradas) * 100) : 0;
 
+    // Altas (oportunidades creadas en el período)
+    const altasDomain: unknown[] = [
+      ['type', '=', 'opportunity'],
+      ['create_date', '>=', date_from],
+      ['create_date', '<=', date_to],
+      ...companyDomain,
+    ];
+    const altas = (await execute('crm.lead', 'search_count', [altasDomain])) as number;
+
+    // Bajas (oportunidades perdidas/archivadas en el período)
+    const bajasDomain: unknown[] = [
+      ['active', '=', false],
+      ['type', '=', 'opportunity'],
+      ['date_closed', '>=', date_from],
+      ['date_closed', '<=', date_to],
+      ...companyDomain,
+    ];
+    const bajas = (await execute('crm.lead', 'search_count', [bajasDomain])) as number;
+
+    // Impagos — oportunidades en la etapa "Impagos" (stage_id.name = 'Impagos')
+    const impagosDomain: unknown[] = [
+      ['active', '=', true],
+      ['type', '=', 'opportunity'],
+      ['stage_id.name', '=', 'Impagos'],
+      ...companyDomain,
+    ];
+    const impagos = (await execute('crm.lead', 'search_count', [impagosDomain])) as number;
+
+    // Valor total de los impagos
+    const impagosGroups = (await execute('crm.lead', 'read_group',
+      [impagosDomain, ['expected_revenue'], []], { lazy: false }
+    )) as Array<{ expected_revenue: number }>;
+    const impagos_value = impagosGroups[0]?.expected_revenue || 0;
+
     return NextResponse.json({
       empresa: label,
       oportunidades_activas,
@@ -64,6 +98,10 @@ export async function GET(req: NextRequest) {
       ganadas,
       perdidas,
       tasa_conversion,
+      altas,
+      bajas,
+      impagos,
+      impagos_value: round2(impagos_value),
     });
   } catch (err) {
     console.error('API crm/summary error:', err);

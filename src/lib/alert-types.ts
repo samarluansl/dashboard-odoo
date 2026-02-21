@@ -1,13 +1,34 @@
 // ═══ Tipos de alerta WhatsApp ═══
 // Sincronizados con los crons del bot de WhatsApp (crons.js)
 
+export type FrequencyOption = 'Diario' | 'Semanal' | 'Quincenal' | 'Mensual';
+
 export interface AlertType {
   value: string;
   label: string;
   description: string;
-  frequency: 'Diario' | 'Semanal' | 'Mensual';
+  frequency: FrequencyOption;
   defaultTime: string; // HH:MM en Madrid
 }
+
+// Opciones de frecuencia para el selector de la UI
+export const FREQUENCY_OPTIONS: { value: FrequencyOption; label: string }[] = [
+  { value: 'Diario', label: 'Diario' },
+  { value: 'Semanal', label: 'Semanal' },
+  { value: 'Quincenal', label: 'Quincenal' },
+  { value: 'Mensual', label: 'Mensual' },
+];
+
+// Opciones de día de la semana (0=Lunes..6=Domingo, ISO)
+export const DAY_OPTIONS: { value: number; label: string }[] = [
+  { value: 0, label: 'Lunes' },
+  { value: 1, label: 'Martes' },
+  { value: 2, label: 'Miércoles' },
+  { value: 3, label: 'Jueves' },
+  { value: 4, label: 'Viernes' },
+  { value: 5, label: 'Sábado' },
+  { value: 6, label: 'Domingo' },
+];
 
 export const ALERT_TYPES: AlertType[] = [
   // — Diarios —

@@ -128,7 +128,7 @@ export default function SuscripcionesPage() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KPICard title="MRR" value={summary.data?.mrr ?? 0} format="currency" icon={<RefreshCw className="h-4 w-4" />} trendPositive="up" loading={summary.loading} subtitle={`${summary.data?.activas ?? 0} activas`} />
-        <KPICard title="Nuevas" value={summary.data?.nuevas ?? 0} format="integer" icon={<UserPlus className="h-4 w-4" />} trendPositive="up" loading={summary.loading} subtitle="este período" />
+        <KPICard title="Altas" value={summary.data?.nuevas ?? 0} format="integer" icon={<UserPlus className="h-4 w-4" />} trendPositive="up" loading={summary.loading} subtitle="este período" />
         <KPICard title="Bajas" value={summary.data?.bajas ?? 0} format="integer" icon={<UserMinus className="h-4 w-4" />} trendPositive="down" loading={summary.loading} subtitle="este período" />
         <KPICard title="Churn rate" value={summary.data?.churn_rate ?? 0} format="percent" icon={<TrendingUp className="h-4 w-4" />} trendPositive="down" loading={summary.loading} />
       </div>
@@ -222,12 +222,12 @@ export default function SuscripcionesPage() {
                   </table>
                 </div>
 
-                {/* Paginación */}
-                {totalPages > 1 && (
-                  <div className="flex items-center justify-between pt-3 border-t border-gray-100 mt-2">
-                    <p className="text-xs text-gray-500">
-                      {processedSubs.length} suscripciones{(subFilter || statusFilter) ? ' (filtrado)' : ''}
-                    </p>
+                {/* Paginación — siempre visible */}
+                <div className="flex items-center justify-between pt-3 border-t border-gray-100 mt-2">
+                  <p className="text-xs text-gray-500">
+                    {processedSubs.length} suscripciones{(subFilter || statusFilter) ? ` (filtrado de ${subscriptionsList.data?.subscriptions?.length || 0})` : ''}
+                  </p>
+                  {totalPages > 1 && (
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => setPage(p => Math.max(1, p - 1))}
@@ -245,8 +245,8 @@ export default function SuscripcionesPage() {
                         <ChevronRight className="h-4 w-4 text-gray-600" />
                       </button>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </>
             ) : subscriptionsList.data?.subscriptions?.length && (subFilter || statusFilter) ? (
               <p className="text-sm text-gray-500">No se encontraron suscripciones</p>

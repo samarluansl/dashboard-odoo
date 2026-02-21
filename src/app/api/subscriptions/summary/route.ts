@@ -54,15 +54,29 @@ export async function GET(req: NextRequest) {
     const nuevas = (await execute('sale.order', 'search_count', [nuevasDomain])) as number;
 
     // Bajas (churned/closed) en el período
+    // Usamos end_date (fecha real de baja) en vez de date_order (fecha de creación)
     const bajasDomain: unknown[] = [
       ['is_subscription', '=', true],
       ['subscription_state', 'in', CHURN_STATES],
-      ['date_order', '>=', date_from],
-      ['date_order', '<=', date_to],
+      ['end_date', '>=', date_from],
+      ['end_date', '<=', date_to],
       ...companyDomain,
     ];
 
-    const bajas = (await execute('sale.order', 'search_count', [bajasDomain])) as number;
+    let bajas: number;
+    try {
+      bajas = (await execute('sale.order', 'search_count', [bajasDomain])) as number;
+    } catch {
+      // Fallback: si end_date no existe en este Odoo, intentar con write_date
+      const bajasFallbackDomain: unknown[] = [
+        ['is_subscription', '=', true],
+        ['subscription_state', 'in', CHURN_STATES],
+        ['write_date', '>=', date_from],
+        ['write_date', '<=', date_to],
+        ...companyDomain,
+      ];
+      bajas = (await execute('sale.order', 'search_count', [bajasFallbackDomain])) as number;
+    }
 
     // Churn rate
     const churn_rate = activas > 0 ? round2((bajas / (activas + bajas)) * 100) : 0;

@@ -8,7 +8,7 @@ import { ErrorMessage } from '@/components/ui/error-message';
 import { useOdooQuery } from '@/lib/hooks/useOdooQuery';
 import { useCompanyFilter } from '@/lib/context/CompanyContext';
 import { fmtEur2, cn } from '@/lib/utils';
-import { Target, Trophy, TrendingUp, Users, ArrowUpDown, Search, ChevronLeft, ChevronRight, ChevronDown, Check, X } from 'lucide-react';
+import { Target, Trophy, TrendingUp, Users, ArrowUpDown, Search, ChevronLeft, ChevronRight, ChevronDown, Check, X, UserPlus, UserMinus, AlertTriangle } from 'lucide-react';
 
 /* ── Multi-select dropdown para etapas CRM ── */
 function StageMultiSelect({
@@ -150,7 +150,7 @@ export default function CRMPage() {
     return p;
   }, [dateFrom, dateTo, companyParam]);
 
-  const summary = useOdooQuery<{ oportunidades_activas: number; pipeline_value: number; ganadas: number; perdidas: number; tasa_conversion: number }>({ url: '/api/crm/summary', params });
+  const summary = useOdooQuery<{ oportunidades_activas: number; pipeline_value: number; ganadas: number; perdidas: number; tasa_conversion: number; altas: number; bajas: number; impagos: number; impagos_value: number }>({ url: '/api/crm/summary', params });
   const pipeline = useOdooQuery<{ stages: Array<{ name: string; value: number; count: number; color?: string }> }>({ url: '/api/crm/pipeline', params: companyParam ? { company: companyParam } : {} });
   const topDeals = useOdooQuery<{ deals: Array<{ name: string; partner: string; expected_revenue: number; stage: string; probability: number }> }>({ url: '/api/crm/top-deals', params: companyParam ? { company: companyParam } : {} });
 
@@ -248,11 +248,14 @@ export default function CRMPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KPICard title="Oportunidades activas" value={filteredOps.count} format="integer" icon={<Target className="h-4 w-4" />} loading={summary.loading} />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+        <KPICard title="Oportunidades" value={filteredOps.count} format="integer" icon={<Target className="h-4 w-4" />} loading={summary.loading} />
         <KPICard title="Valor pipeline" value={filteredOps.value} format="currency" icon={<TrendingUp className="h-4 w-4" />} loading={summary.loading} />
+        <KPICard title="Altas" value={summary.data?.altas ?? 0} format="integer" icon={<UserPlus className="h-4 w-4" />} trendPositive="up" loading={summary.loading} subtitle="este periodo" />
+        <KPICard title="Bajas" value={summary.data?.bajas ?? 0} format="integer" icon={<UserMinus className="h-4 w-4" />} trendPositive="down" loading={summary.loading} subtitle="este periodo" />
         <KPICard title="Ganadas" value={summary.data?.ganadas ?? 0} format="integer" icon={<Trophy className="h-4 w-4" />} trendPositive="up" loading={summary.loading} subtitle={`${summary.data?.perdidas ?? 0} perdidas`} />
-        <KPICard title="Tasa conversion" value={summary.data?.tasa_conversion ?? 0} format="percent" icon={<Users className="h-4 w-4" />} trendPositive="up" loading={summary.loading} />
+        <KPICard title="Impagos" value={summary.data?.impagos ?? 0} format="integer" icon={<AlertTriangle className="h-4 w-4" />} trendPositive="down" loading={summary.loading} subtitle={summary.data?.impagos_value ? fmtEur2(summary.data.impagos_value) : undefined} />
+        <KPICard title="Conversion" value={summary.data?.tasa_conversion ?? 0} format="percent" icon={<Users className="h-4 w-4" />} trendPositive="up" loading={summary.loading} />
       </div>
 
       {/* Pipeline por etapa — tabla con números */}
