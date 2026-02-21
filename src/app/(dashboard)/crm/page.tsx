@@ -275,14 +275,18 @@ export default function CRMPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
-        <KPICard title="Clubs activos" value={d?.clubs_activos ?? 0} previousValue={p?.clubs_activos} format="integer" icon={<CheckCircle className="h-4 w-4" />} trendPositive="up" loading={summary.loading} subtitle="clubs" />
+      {/* KPIs — fila 1: 4 principales */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <KPICard title="Clubs activos" value={d?.clubs_activos ?? 0} previousValue={p?.clubs_activos} format="integer" icon={<CheckCircle className="h-4 w-4" />} trendPositive="up" loading={summary.loading} />
         <KPICard title="Oportunidades" value={filteredOps.count} previousValue={p?.oportunidades_activas} format="integer" icon={<Target className="h-4 w-4" />} loading={summary.loading} />
         <KPICard title="Altas" value={d?.altas ?? 0} previousValue={p?.altas} format="integer" icon={<UserPlus className="h-4 w-4" />} trendPositive="up" loading={summary.loading} subtitle="este periodo" />
         <KPICard title="Bajas" value={d?.bajas ?? 0} previousValue={p?.bajas} format="integer" icon={<UserMinus className="h-4 w-4" />} trendPositive="down" loading={summary.loading} subtitle="este periodo" />
-        <KPICard title="Posibles bajas" value={d?.posibles_bajas ?? 0} previousValue={p?.posibles_bajas} format="integer" icon={<AlertTriangle className="h-4 w-4" />} trendPositive="down" loading={summary.loading} subtitle="clubs" />
-        <KPICard title="Impagos" value={d?.impagos ?? 0} previousValue={p?.impagos} format="integer" icon={<AlertTriangle className="h-4 w-4" />} trendPositive="down" loading={summary.loading} subtitle="clubs" />
-        <KPICard title="Conversion" value={d?.tasa_conversion ?? 0} previousValue={p?.tasa_conversion} format="percent" icon={<Users className="h-4 w-4" />} trendPositive="up" loading={summary.loading} />
+      </div>
+      {/* KPIs — fila 2: 3 secundarios */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-3">
+        <KPICard title="Posibles bajas" value={d?.posibles_bajas ?? 0} previousValue={p?.posibles_bajas} format="integer" icon={<AlertTriangle className="h-4 w-4" />} trendPositive="down" loading={summary.loading} />
+        <KPICard title="Impagos" value={d?.impagos ?? 0} previousValue={p?.impagos} format="integer" icon={<AlertTriangle className="h-4 w-4" />} trendPositive="down" loading={summary.loading} />
+        <KPICard title="Conversión" value={d?.tasa_conversion ?? 0} previousValue={p?.tasa_conversion} format="percent" icon={<Users className="h-4 w-4" />} trendPositive="up" loading={summary.loading} />
       </div>
 
       {/* Pipeline por etapa — tabla con números */}
@@ -292,13 +296,13 @@ export default function CRMPage() {
           {pipeline.loading ? (
             <div className="space-y-2">{[1,2,3,4].map(i => <div key={i} className="h-10 bg-gray-100 rounded animate-pulse" />)}</div>
           ) : filteredPipeline.length ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+            <div className="overflow-x-auto -mx-2 px-2">
+              <table className="w-full text-sm min-w-[500px]">
                 <thead>
                   <tr className="border-b border-gray-200 text-left text-gray-500">
-                    <th className="pb-2 font-medium">Etapa</th>
-                    <th className="pb-2 font-medium text-right">Oportunidades</th>
-                    <th className="pb-2 font-medium" style={{ width: '40%' }}>Proporcion</th>
+                    <th className="pb-2 pr-4 font-medium" style={{ width: '35%' }}>Etapa</th>
+                    <th className="pb-2 pr-4 font-medium text-right" style={{ width: '80px' }}>Clubs</th>
+                    <th className="pb-2 font-medium" style={{ width: '50%' }}>Proporción</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -307,10 +311,10 @@ export default function CRMPage() {
                     const totalCount = filteredPipeline.reduce((s, st) => s + st.count, 0) || 1;
                     return filteredPipeline.map((stage, i) => (
                       <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
-                        <td className="py-2.5 font-medium text-gray-900">{stage.name}</td>
-                        <td className="py-2.5 text-right text-gray-600">{stage.count}</td>
-                        <td className="py-2.5 px-2">
-                          <div className="flex items-center gap-2">
+                        <td className="py-2.5 pr-4 font-medium text-gray-900 whitespace-nowrap">{stage.name}</td>
+                        <td className="py-2.5 pr-4 text-right text-gray-700 font-medium tabular-nums">{stage.count}</td>
+                        <td className="py-2.5">
+                          <div className="flex items-center gap-3">
                             <div className="flex-1 h-3 bg-gray-100 rounded-full overflow-hidden">
                               <div
                                 className="h-full rounded-full transition-all"
@@ -320,7 +324,7 @@ export default function CRMPage() {
                                 }}
                               />
                             </div>
-                            <span className="text-xs text-gray-400 w-10 text-right">{((stage.count / totalCount) * 100).toFixed(0)}%</span>
+                            <span className="text-xs text-gray-400 tabular-nums w-8 text-right shrink-0">{((stage.count / totalCount) * 100).toFixed(0)}%</span>
                           </div>
                         </td>
                       </tr>
@@ -329,8 +333,8 @@ export default function CRMPage() {
                 </tbody>
                 <tfoot>
                   <tr className="border-t border-gray-200">
-                    <td className="pt-2 font-semibold text-gray-900">Total</td>
-                    <td className="pt-2 text-right font-semibold text-gray-900">{filteredPipeline.reduce((s, st) => s + st.count, 0)}</td>
+                    <td className="pt-3 pr-4 font-semibold text-gray-900">Total</td>
+                    <td className="pt-3 pr-4 text-right font-semibold text-gray-900 tabular-nums">{filteredPipeline.reduce((s, st) => s + st.count, 0)}</td>
                     <td></td>
                   </tr>
                 </tfoot>
@@ -349,7 +353,7 @@ export default function CRMPage() {
             <div className="flex items-center gap-3">
               <CardTitle>Clubs</CardTitle>
               {clubsList.data && (
-                <Badge variant="default">{clubsList.data.clubs.length} clubs</Badge>
+                <Badge variant="default">{processedClubs.length} clubs</Badge>
               )}
             </div>
             <div className="flex flex-wrap gap-2">
@@ -381,16 +385,16 @@ export default function CRMPage() {
                 <table className="w-full text-sm min-w-[480px]">
                   <thead>
                     <tr className="border-b border-gray-200 text-left text-gray-500">
-                      <th className="pb-2 font-medium cursor-pointer select-none hover:text-gray-900" onClick={() => handleClubSort('name')}>
+                      <th className="pb-2 pr-3 font-medium cursor-pointer select-none hover:text-gray-900" onClick={() => handleClubSort('name')}>
                         Club <SortIcon field="name" />
                       </th>
-                      <th className="pb-2 font-medium cursor-pointer select-none hover:text-gray-900 hidden sm:table-cell" onClick={() => handleClubSort('partner')}>
+                      <th className="pb-2 pr-3 font-medium cursor-pointer select-none hover:text-gray-900 hidden sm:table-cell" onClick={() => handleClubSort('partner')}>
                         Cliente <SortIcon field="partner" />
                       </th>
-                      <th className="pb-2 font-medium text-right cursor-pointer select-none hover:text-gray-900" onClick={() => handleClubSort('ingreso')}>
+                      <th className="pb-2 pr-3 font-medium text-right cursor-pointer select-none hover:text-gray-900 whitespace-nowrap" onClick={() => handleClubSort('ingreso')}>
                         Ingreso <SortIcon field="ingreso" />
                       </th>
-                      <th className="pb-2 font-medium cursor-pointer select-none hover:text-gray-900" onClick={() => handleClubSort('stage')}>
+                      <th className="pb-2 font-medium cursor-pointer select-none hover:text-gray-900 whitespace-nowrap" onClick={() => handleClubSort('stage')}>
                         Etapa <SortIcon field="stage" />
                       </th>
                     </tr>
@@ -398,13 +402,13 @@ export default function CRMPage() {
                   <tbody>
                     {paginatedClubs.map((club, i) => (
                       <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
-                        <td className="py-2">
+                        <td className="py-2 pr-3">
                           <div className="text-gray-900 font-medium truncate max-w-[200px]">{club.name}</div>
                           <div className="text-xs text-gray-400 truncate max-w-[200px] sm:hidden">{club.partner}</div>
                         </td>
-                        <td className="py-2 text-gray-600 truncate max-w-[150px] hidden sm:table-cell">{club.partner}</td>
-                        <td className="py-2 text-right font-semibold text-gray-900 whitespace-nowrap">{club.ingreso > 0 ? fmtEur2(club.ingreso) : <span className="text-gray-300">—</span>}</td>
-                        <td className="py-2"><Badge variant="info">{club.stage}</Badge></td>
+                        <td className="py-2 pr-3 text-gray-600 hidden sm:table-cell"><div className="truncate max-w-[150px]">{club.partner}</div></td>
+                        <td className="py-2 pr-3 text-right font-semibold text-gray-900 whitespace-nowrap tabular-nums">{club.ingreso > 0 ? fmtEur2(club.ingreso) : <span className="text-gray-300">—</span>}</td>
+                        <td className="py-2"><Badge variant="info"><span className="truncate max-w-[140px] sm:max-w-[200px] inline-block">{club.stage}</span></Badge></td>
                       </tr>
                     ))}
                   </tbody>
@@ -414,7 +418,7 @@ export default function CRMPage() {
               {/* Paginacion — siempre visible */}
               <div className="flex items-center justify-between pt-4 border-t border-gray-100 mt-3">
                 <p className="text-xs text-gray-500">
-                  {processedClubs.length} clubs{clubFilter || clubStageFilter.length > 0 ? ` (filtrado de ${clubsList.data?.clubs?.length || 0})` : ''}
+                  {processedClubs.length} clubs{clubFilter || clubStageFilter.length > 0 || selectedStages.length > 0 ? ` (filtrado de ${clubsList.data?.clubs?.length || 0})` : ''}
                 </p>
                 {clubTotalPages > 1 && (
                   <div className="flex items-center gap-2">
@@ -437,7 +441,7 @@ export default function CRMPage() {
                 )}
               </div>
             </>
-          ) : clubsList.data?.clubs?.length && (clubFilter || clubStageFilter.length > 0) ? (
+          ) : clubsList.data?.clubs?.length && (clubFilter || clubStageFilter.length > 0 || selectedStages.length > 0) ? (
             <p className="text-sm text-gray-500">No se encontraron clubs con los filtros aplicados</p>
           ) : (
             <p className="text-sm text-gray-400">Sin clubs</p>
