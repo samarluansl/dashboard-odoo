@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils';
 import {
   User, Users, Plus, Pencil, Trash2, X,
   Check, ChevronDown, Phone, Mail, Shield, Building2, MessageCircle,
-  Bell, Clock, Calendar, Loader2,
+  Bell, Clock, Calendar, Loader2, Wifi, WifiOff, Activity,
 } from 'lucide-react';
 import { COMPANIES } from '@/lib/companies';
 import { ALERT_TYPES, FREQUENCY_OPTIONS, DAY_OPTIONS, type FrequencyOption } from '@/lib/alert-types';
@@ -30,6 +30,126 @@ interface Profile {
   notifications_enabled: boolean;
   allowed_companies: string[];
   created_at: string;
+}
+
+/* ── Card de estado del bot ── */
+function BotStatusCard() {
+  const [status, setStatus] = useState<{
+    status: string;
+    whatsapp_connected: boolean;
+    odoo_connected: boolean;
+    last_heartbeat: string | null;
+    last_message_at: string | null;
+    messages_today: number;
+    uptime_since: string | null;
+    minutes_since_heartbeat: number;
+  } | null>(null);
+
+  const fetchStatus = useCallback(async () => {
+    try {
+      const res = await fetch('/api/bot-status');
+      if (res.ok) setStatus(await res.json());
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    fetchStatus();
+    const interval = setInterval(fetchStatus, 30000); // Actualizar cada 30s
+    return () => clearInterval(interval);
+  }, [fetchStatus]);
+
+  const isOnline = status?.status === 'online';
+  const isDegraded = status?.status === 'degraded';
+
+  const formatTime = (iso: string | null) => {
+    if (!iso) return '—';
+    return new Date(iso).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const formatUptime = (iso: string | null) => {
+    if (!iso) return '—';
+    const ms = Date.now() - new Date(iso).getTime();
+    const h = Math.floor(ms / 3600000);
+    const m = Math.floor((ms % 3600000) / 60000);
+    return h > 0 ? `${h}h ${m}m` : `${m}m`;
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Activity className="h-4 w-4" />
+          Estado del Bot WhatsApp
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {!status ? (
+          <div className="flex items-center justify-center py-4">
+            <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* Estado principal */}
+            <div className="flex items-center gap-3">
+              <div className={cn(
+                'flex h-10 w-10 items-center justify-center rounded-full',
+                isOnline ? 'bg-emerald-100' : isDegraded ? 'bg-amber-100' : 'bg-red-100'
+              )}>
+                {isOnline ? (
+                  <Wifi className="h-5 w-5 text-emerald-600" />
+                ) : (
+                  <WifiOff className={cn('h-5 w-5', isDegraded ? 'text-amber-600' : 'text-red-500')} />
+                )}
+              </div>
+              <div>
+                <p className="font-semibold text-gray-900">
+                  {isOnline ? 'Online' : isDegraded ? 'Degradado' : 'Offline'}
+                </p>
+                <p className="text-xs text-gray-400">
+                  Último heartbeat: {status.minutes_since_heartbeat < 999 ? `hace ${status.minutes_since_heartbeat} min` : '—'}
+                </p>
+              </div>
+              <div className={cn(
+                'ml-auto h-2.5 w-2.5 rounded-full',
+                isOnline ? 'bg-emerald-500 animate-pulse' : isDegraded ? 'bg-amber-400' : 'bg-red-400'
+              )} />
+            </div>
+
+            {/* Métricas */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="rounded-lg bg-gray-50 px-3 py-2.5">
+                <p className="text-xs text-gray-400 mb-0.5">WhatsApp</p>
+                <p className={cn('text-sm font-semibold', status.whatsapp_connected ? 'text-emerald-600' : 'text-red-500')}>
+                  {status.whatsapp_connected ? '✓ Conectado' : '✗ Desconectado'}
+                </p>
+              </div>
+              <div className="rounded-lg bg-gray-50 px-3 py-2.5">
+                <p className="text-xs text-gray-400 mb-0.5">Odoo</p>
+                <p className={cn('text-sm font-semibold', status.odoo_connected ? 'text-emerald-600' : 'text-red-500')}>
+                  {status.odoo_connected ? '✓ Conectado' : '✗ Desconectado'}
+                </p>
+              </div>
+              <div className="rounded-lg bg-gray-50 px-3 py-2.5">
+                <p className="text-xs text-gray-400 mb-0.5">Mensajes hoy</p>
+                <p className="text-sm font-semibold text-gray-900">{status.messages_today ?? 0}</p>
+              </div>
+              <div className="rounded-lg bg-gray-50 px-3 py-2.5">
+                <p className="text-xs text-gray-400 mb-0.5">Uptime</p>
+                <p className="text-sm font-semibold text-gray-900">{formatUptime(status.uptime_since)}</p>
+              </div>
+            </div>
+
+            {/* Último mensaje */}
+            {status.last_message_at && (
+              <p className="text-xs text-gray-400">
+                Último mensaje recibido: {formatTime(status.last_message_at)}
+              </p>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 /* ── Multi-select de empresas ── */
@@ -690,6 +810,9 @@ export default function AjustesPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Estado del Bot */}
+      <BotStatusCard />
 
       {/* Info del sistema */}
       <Card>
