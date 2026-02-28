@@ -11,16 +11,17 @@ import xmlrpc from 'xmlrpc';
 const url = new URL(process.env.ODOO_URL!);
 const isSecure = url.protocol === 'https:';
 const createClient = isSecure ? xmlrpc.createSecureClient : xmlrpc.createClient;
+const port = url.port ? parseInt(url.port) : (isSecure ? 443 : 80);
 
 const commonClient = createClient({
   host: url.hostname,
-  port: isSecure ? 443 : 80,
+  port,
   path: '/xmlrpc/2/common',
 });
 
 const modelsClient = createClient({
   host: url.hostname,
-  port: isSecure ? 443 : 80,
+  port,
   path: '/xmlrpc/2/object',
 });
 
@@ -35,6 +36,10 @@ function call(client: xmlrpc.Client, method: string, params: unknown[]): Promise
 
 let uid: number | null = null;
 
+function isHtmlError(err: unknown): boolean {
+  return err instanceof Error && err.message.includes('Unknown XML-RPC tag');
+}
+
 async function authenticate(): Promise<number> {
   if (uid) return uid;
   uid = (await call(commonClient, 'authenticate', [
@@ -48,16 +53,30 @@ async function authenticate(): Promise<number> {
 }
 
 export async function execute(model: string, method: string, args: unknown[] = [], kwargs: Record<string, unknown> = {}): Promise<unknown> {
-  const uid = await authenticate();
-  return call(modelsClient, 'execute_kw', [
-    process.env.ODOO_DB,
-    uid,
-    process.env.ODOO_API_KEY,
-    model,
-    method,
-    args,
-    kwargs,
-  ]);
+  const doCall = async () => {
+    const currentUid = await authenticate();
+    return call(modelsClient, 'execute_kw', [
+      process.env.ODOO_DB,
+      currentUid,
+      process.env.ODOO_API_KEY,
+      model,
+      method,
+      args,
+      kwargs,
+    ]);
+  };
+
+  try {
+    return await doCall();
+  } catch (err) {
+    // Odoo devolvió HTML (error/login page) — resetear uid y reintentar una vez
+    if (isHtmlError(err)) {
+      uid = null;
+      await new Promise(r => setTimeout(r, 500));
+      return doCall();
+    }
+    throw err;
+  }
 }
 
 // ═══ CACHE EMPRESAS ═══
