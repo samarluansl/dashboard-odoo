@@ -2,8 +2,14 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 
+// ─── Cache cliente compartido ─────────────────────────────────────────────────
+// Módulo cliente → compartido entre todos los useOdooQuery de la misma pestaña.
+// TTL por defecto: 5 minutos. Si los datos son recientes, se devuelven sin llamar a Odoo.
+const DEFAULT_STALE_MS = 5 * 60 * 1000;
+const clientCache = new Map<string, { data: unknown; fetchedAt: number }>();
+// ─────────────────────────────────────────────────────────────────────────────
+
 // ─── Limitador de concurrencia global (browser) ───────────────────────────────
-// Al ser módulo cliente, esta variable es compartida por TODOS los useOdooQuery.
 // Máximo 4 peticiones simultáneas al servidor → Odoo nunca recibe más de 4 a la vez.
 const MAX_CONCURRENT = 4;
 let activeCount = 0;
@@ -32,6 +38,8 @@ interface UseOdooQueryOptions {
   params?: Record<string, string>;
   /** Desactivar la query */
   enabled?: boolean;
+  /** Tiempo en ms que los datos se consideran frescos (default: 5 min) */
+  staleMs?: number;
 }
 
 interface UseOdooQueryResult<T> {
@@ -41,16 +49,29 @@ interface UseOdooQueryResult<T> {
   refetch: () => void;
 }
 
-export function useOdooQuery<T>({ url, params, enabled = true }: UseOdooQueryOptions): UseOdooQueryResult<T> {
-  const [data, setData] = useState<T | null>(null);
-  const [loading, setLoading] = useState(enabled); // true si habilitado para evitar flash de "Sin datos"
+export function useOdooQuery<T>({ url, params, enabled = true, staleMs = DEFAULT_STALE_MS }: UseOdooQueryOptions): UseOdooQueryResult<T> {
+  const paramsKey = params ? JSON.stringify(params) : '';
+  const cacheKey = `${url}::${paramsKey}`;
+
+  // Inicializar desde cache si hay datos frescos
+  const cached = clientCache.get(cacheKey);
+  const isFresh = !!cached && (Date.now() - cached.fetchedAt) < staleMs;
+
+  const [data, setData] = useState<T | null>(() => isFresh ? (cached!.data as T) : null);
+  const [loading, setLoading] = useState(enabled && !isFresh);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  const paramsKey = params ? JSON.stringify(params) : '';
-
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (force = false) => {
     if (!enabled) return;
+
+    // Si los datos son frescos y no es un refetch manual, no llamar a Odoo
+    const entry = clientCache.get(cacheKey);
+    if (!force && entry && (Date.now() - entry.fetchedAt) < staleMs) {
+      setData(entry.data as T);
+      setLoading(false);
+      return;
+    }
 
     // Cancelar petición anterior si existe
     abortRef.current?.abort();
@@ -88,6 +109,8 @@ export function useOdooQuery<T>({ url, params, enabled = true }: UseOdooQueryOpt
         setError(json.error || `Error ${res.status}`);
         setData(null);
       } else {
+        // Guardar en cache
+        clientCache.set(cacheKey, { data: json, fetchedAt: Date.now() });
         setData(json as T);
       }
     } catch (err) {
@@ -103,7 +126,7 @@ export function useOdooQuery<T>({ url, params, enabled = true }: UseOdooQueryOpt
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [url, paramsKey, enabled]);
+  }, [url, paramsKey, enabled, staleMs]);
 
   useEffect(() => {
     if (!enabled) {
@@ -118,5 +141,5 @@ export function useOdooQuery<T>({ url, params, enabled = true }: UseOdooQueryOpt
     };
   }, [fetchData, enabled]);
 
-  return { data, loading, error, refetch: fetchData };
+  return { data, loading, error, refetch: () => fetchData(true) };
 }
