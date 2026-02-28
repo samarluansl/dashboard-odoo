@@ -36,6 +36,11 @@ function call(client: xmlrpc.Client, method: string, params: unknown[]): Promise
 
 let uid: number | null = null;
 
+// Cache de resultados (30s) + deduplicación de llamadas in-flight
+const resultCache = new Map<string, { value: unknown; expiry: number }>();
+const inflight = new Map<string, Promise<unknown>>();
+const CACHE_TTL = 30_000;
+
 function isHtmlError(err: unknown): boolean {
   return err instanceof Error && err.message.includes('Unknown XML-RPC tag');
 }
@@ -53,6 +58,16 @@ async function authenticate(): Promise<number> {
 }
 
 export async function execute(model: string, method: string, args: unknown[] = [], kwargs: Record<string, unknown> = {}): Promise<unknown> {
+  const cacheKey = JSON.stringify({ model, method, args, kwargs });
+
+  // Resultado cacheado (instancia warm de Vercel)
+  const cached = resultCache.get(cacheKey);
+  if (cached && cached.expiry > Date.now()) return cached.value;
+
+  // Si ya hay una llamada idéntica en vuelo, reutilizarla
+  const existing = inflight.get(cacheKey);
+  if (existing) return existing;
+
   const doCall = async () => {
     const currentUid = await authenticate();
     return call(modelsClient, 'execute_kw', [
@@ -66,17 +81,29 @@ export async function execute(model: string, method: string, args: unknown[] = [
     ]);
   };
 
-  try {
-    return await doCall();
-  } catch (err) {
-    // Odoo devolvió HTML (error/login page) — resetear uid y reintentar una vez
-    if (isHtmlError(err)) {
-      uid = null;
-      await new Promise(r => setTimeout(r, 500));
-      return doCall();
+  const promise = (async () => {
+    try {
+      const result = await doCall();
+      resultCache.set(cacheKey, { value: result, expiry: Date.now() + CACHE_TTL });
+      return result;
+    } catch (err) {
+      // Odoo devolvió HTML — resetear uid y reintentar con jitter para no saturar Odoo
+      if (isHtmlError(err)) {
+        uid = null;
+        const jitter = 200 + Math.random() * 800; // 200–1000ms aleatorio
+        await new Promise(r => setTimeout(r, jitter));
+        const result = await doCall();
+        resultCache.set(cacheKey, { value: result, expiry: Date.now() + CACHE_TTL });
+        return result;
+      }
+      throw err;
+    } finally {
+      inflight.delete(cacheKey);
     }
-    throw err;
-  }
+  })();
+
+  inflight.set(cacheKey, promise);
+  return promise;
 }
 
 // ═══ CACHE EMPRESAS ═══
