@@ -39,6 +39,9 @@ check-fields.js
 # vercel
 .vercel
 
+# claude code (worktrees e internals, no el CLAUDE.md del proyecto)
+.claude/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
