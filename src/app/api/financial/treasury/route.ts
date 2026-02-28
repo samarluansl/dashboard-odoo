@@ -22,35 +22,40 @@ export async function GET(req: NextRequest) {
 
     const bankIds = bankAccounts.map(a => a.id);
 
-    // Generar puntos mes a mes
+    // Una sola llamada: todas las líneas hasta date_to (sin límite inferior para balance acumulado correcto)
+    const allLines = (await execute('account.move.line', 'search_read', [
+      [
+        ['account_id', 'in', bankIds],
+        ['parent_state', '=', 'posted'],
+        ['date', '<=', date_to],
+        ...companyDomain,
+      ],
+    ], { fields: ['date', 'balance'], order: 'date asc', limit: 0 })) as Array<{ date: string; balance: number }>;
+
+    // Calcular balance acumulado mes a mes en JS (sin llamadas adicionales a Odoo)
     const start = new Date(date_from);
     const end = new Date(date_to);
     const data: { fecha: string; valor: number }[] = [];
+    const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 
+    const pad = (n: number) => String(n).padStart(2, '0');
+    let lineIdx = 0;
+    let cumBalance = 0;
     const current = new Date(start.getFullYear(), start.getMonth(), 1);
 
     while (current <= end) {
-      const pad = (n: number) => String(n).padStart(2, '0');
       const lastDay = new Date(current.getFullYear(), current.getMonth() + 1, 0).getDate();
       const monthEnd = `${current.getFullYear()}-${pad(current.getMonth() + 1)}-${pad(lastDay)}`;
 
-      const domain: unknown[] = [
-        ['account_id', 'in', bankIds],
-        ['parent_state', '=', 'posted'],
-        ['date', '<=', monthEnd],
-        ...companyDomain,
-      ];
+      // Avanzar líneas ordenadas hasta el fin de mes
+      while (lineIdx < allLines.length && allLines[lineIdx].date <= monthEnd) {
+        cumBalance += allLines[lineIdx].balance || 0;
+        lineIdx++;
+      }
 
-      const groups = (await execute('account.move.line', 'read_group',
-        [domain, ['balance'], ['account_id']], { lazy: false }
-      )) as Array<{ balance: number }>;
-
-      const total = groups.reduce((s, g) => s + (g.balance || 0), 0);
-
-      const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
       data.push({
         fecha: `${monthNames[current.getMonth()]} ${current.getFullYear().toString().slice(2)}`,
-        valor: round2(total),
+        valor: round2(cumBalance),
       });
 
       current.setMonth(current.getMonth() + 1);
