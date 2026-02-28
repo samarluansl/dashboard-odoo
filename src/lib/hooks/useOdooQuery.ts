@@ -2,6 +2,29 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 
+// ─── Limitador de concurrencia global (browser) ───────────────────────────────
+// Al ser módulo cliente, esta variable es compartida por TODOS los useOdooQuery.
+// Máximo 4 peticiones simultáneas al servidor → Odoo nunca recibe más de 4 a la vez.
+const MAX_CONCURRENT = 4;
+let activeCount = 0;
+const waitQueue: Array<() => void> = [];
+
+function acquireSlot(): Promise<void> {
+  if (activeCount < MAX_CONCURRENT) {
+    activeCount++;
+    return Promise.resolve();
+  }
+  return new Promise(resolve => {
+    waitQueue.push(() => { activeCount++; resolve(); });
+  });
+}
+
+function releaseSlot(): void {
+  activeCount--;
+  if (waitQueue.length > 0) waitQueue.shift()!();
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 interface UseOdooQueryOptions {
   /** URL del API route (sin params) */
   url: string;
@@ -37,6 +60,15 @@ export function useOdooQuery<T>({ url, params, enabled = true }: UseOdooQueryOpt
     setLoading(true);
     setError(null);
 
+    // Esperar slot de concurrencia (máx. MAX_CONCURRENT peticiones simultáneas)
+    await acquireSlot();
+
+    // Si fue abortada mientras esperaba el slot, liberar y salir
+    if (controller.signal.aborted) {
+      releaseSlot();
+      return;
+    }
+
     try {
       const searchParams = new URLSearchParams(params || {});
       const separator = url.includes('?') ? '&' : '?';
@@ -64,6 +96,7 @@ export function useOdooQuery<T>({ url, params, enabled = true }: UseOdooQueryOpt
       setError(err instanceof Error ? err.message : 'Error de conexión');
       setData(null);
     } finally {
+      releaseSlot();
       // Solo actualizar loading si no fue abortada
       if (!controller.signal.aborted) {
         setLoading(false);
