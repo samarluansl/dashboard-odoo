@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { execute, resolveCompanies, round2 } from '@/lib/odoo';
+import { execute, resolveCompanies } from '@/lib/odoo';
+import { requireAuth } from '@/lib/auth';
 
 export async function GET(req: NextRequest) {
+  const auth = await requireAuth(req);
+  if ('error' in auth) return auth.error;
+
   try {
     const { searchParams } = req.nextUrl;
     const company_name = searchParams.get('company') || undefined;
@@ -10,7 +14,7 @@ export async function GET(req: NextRequest) {
 
     // Contar facturas de clientes vencidas > 30 días
     const today = new Date().toISOString().split('T')[0];
-    const thirtyAgo = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
+    // FIX #8: removed unused thirtyAgo variable
 
     const overdueDomain: unknown[] = [
       ['move_type', '=', 'out_invoice'],
@@ -20,16 +24,23 @@ export async function GET(req: NextRequest) {
       ...companyDomain,
     ];
 
-    const overdueCount = (await execute('account.move', 'search_count', [overdueDomain])) as number;
-
-    // Facturas muy vencidas (>60 días) → críticas
-    const sixtyAgo = new Date(Date.now() - 60 * 86400000).toISOString().split('T')[0];
+    // Facturas muy vencidas (>60 dias) = criticas
+    const CRITICAL_OVERDUE_DAYS = 60;
+    const MS_PER_DAY = 86_400_000;
+    const sixtyAgo = new Date(Date.now() - CRITICAL_OVERDUE_DAYS * MS_PER_DAY).toISOString().split('T')[0];
     const criticalDomain: unknown[] = [
-      ...overdueDomain.filter((_, i) => i < overdueDomain.length), // copiar
+      ['move_type', '=', 'out_invoice'],
+      ['state', '=', 'posted'],
+      ['payment_state', 'in', ['not_paid', 'partial']],
       ['invoice_date_due', '<', sixtyAgo],
+      ...companyDomain,
     ];
 
-    const criticalCount = (await execute('account.move', 'search_count', [criticalDomain])) as number;
+    // PERF: Execute both counts in parallel
+    const [overdueCount, criticalCount] = await Promise.all([
+      execute('account.move', 'search_count', [overdueDomain]) as Promise<number>,
+      execute('account.move', 'search_count', [criticalDomain]) as Promise<number>,
+    ]);
 
     return NextResponse.json({
       count: overdueCount,

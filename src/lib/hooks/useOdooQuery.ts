@@ -6,7 +6,11 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 // Módulo cliente → compartido entre todos los useOdooQuery de la misma pestaña.
 // TTL por defecto: 5 minutos. Si los datos son recientes, se devuelven sin llamar a Odoo.
 const DEFAULT_STALE_MS = 5 * 60 * 1000;
+const MAX_CLIENT_CACHE = 200;
 const clientCache = new Map<string, { data: unknown; fetchedAt: number }>();
+
+// ─── In-flight dedup: si múltiples hooks piden la misma URL, reutilizar la promise ──
+const inflightRequests = new Map<string, Promise<unknown>>();
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ─── Limitador de concurrencia global (browser) ───────────────────────────────
@@ -95,28 +99,50 @@ export function useOdooQuery<T>({ url, params, enabled = true, staleMs = DEFAULT
       const separator = url.includes('?') ? '&' : '?';
       const fullUrl = searchParams.toString() ? `${url}${separator}${searchParams}` : url;
 
-      const res = await fetch(fullUrl, { signal: controller.signal });
-
-      // Intentar parsear JSON; si falla, dar error legible
-      let json;
-      try {
-        json = await res.json();
-      } catch {
-        throw new Error(`Error ${res.status}: respuesta no válida del servidor`);
-      }
-
-      if (!res.ok) {
-        setError(json.error || `Error ${res.status}`);
-        setData(null);
+      // PERF: In-flight dedup — if another hook is fetching the same URL, reuse its promise
+      let json: unknown;
+      const existing = inflightRequests.get(fullUrl);
+      if (existing && !force) {
+        json = await existing;
       } else {
-        // Guardar en cache
-        clientCache.set(cacheKey, { data: json, fetchedAt: Date.now() });
-        setData(json as T);
+        const fetchPromise = (async () => {
+          const response = await fetch(fullUrl, { signal: controller.signal });
+          let responseBody;
+          try {
+            responseBody = await response.json();
+          } catch {
+            throw new Error(`Error ${response.status}: respuesta no válida del servidor`);
+          }
+          if (!response.ok) {
+            throw Object.assign(new Error(responseBody.error || `Error ${response.status}`), { isApiError: true });
+          }
+          return responseBody;
+        })();
+
+        inflightRequests.set(fullUrl, fetchPromise);
+        try {
+          json = await fetchPromise;
+        } finally {
+          inflightRequests.delete(fullUrl);
+        }
       }
+
+      // Guardar en cache (evict oldest if too large)
+      if (clientCache.size >= MAX_CLIENT_CACHE) {
+        const firstKey = clientCache.keys().next().value;
+        if (firstKey !== undefined) clientCache.delete(firstKey);
+      }
+      clientCache.set(cacheKey, { data: json, fetchedAt: Date.now() });
+      setData(json as T);
     } catch (err) {
       // Ignorar errores de abort (cambio rápido de filtros)
       if (err instanceof DOMException && err.name === 'AbortError') return;
-      setError(err instanceof Error ? err.message : 'Error de conexión');
+      // API errors from our own response
+      if (err instanceof Error && (err as Error & { isApiError?: boolean }).isApiError) {
+        setError(err.message);
+      } else {
+        setError(err instanceof Error ? err.message : 'Error de conexión');
+      }
       setData(null);
     } finally {
       releaseSlot();

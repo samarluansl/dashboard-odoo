@@ -57,9 +57,10 @@ export default function ChatPage() {
     abortRef.current = controller;
 
     try {
-      // Enviar solo mensajes reales (sin el greeting hardcodeado)
+      // FIX #12: Enviar solo mensajes reales (sin el greeting hardcodeado)
+      // Filtrar por índice: excluir el primer mensaje (greeting)
       const historyToSend = [...messages, userMsg]
-        .filter(m => m.role !== 'assistant' || m.content !== messages[0]?.content || messages.indexOf(m) !== 0)
+        .filter((_, i) => i > 0)
         .slice(-10);
 
       // Obtener token de auth para que el backend identifique al usuario

@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { execute, resolveCompanies, round2 } from '@/lib/odoo';
+import { requireAuth } from '@/lib/auth';
 
 export async function GET(req: NextRequest) {
+  const auth = await requireAuth(req);
+  if ('error' in auth) return auth.error;
+
   try {
     const { searchParams } = req.nextUrl;
     const date_from = searchParams.get('date_from');
@@ -15,11 +19,11 @@ export async function GET(req: NextRequest) {
     const { domain: companyDomain, error } = await resolveCompanies(company_name);
     if (error) return NextResponse.json({ error }, { status: 404 });
 
-    // Remap company_id to employee_id.company_id for attendance model
-    const attendanceCompanyDomain = companyDomain.map((d: unknown) =>
-      Array.isArray(d) && d[0] === 'company_id'
-        ? ['employee_id.company_id', d[1], d[2]]
-        : d
+    // hr.attendance no tiene company_id directo; remap a employee_id.company_id
+    const attendanceCompanyDomain = (companyDomain as unknown[][]).map(domainClause =>
+      Array.isArray(domainClause) && domainClause[0] === 'company_id'
+        ? ['employee_id.company_id', domainClause[1], domainClause[2]]
+        : domainClause
     );
 
     // Agrupar horas de asistencia por empleado
@@ -38,28 +42,28 @@ export async function GET(req: NextRequest) {
     }>;
 
     // Obtener departamentos
-    const empIds = groups.map(g => g.employee_id?.[0]).filter(Boolean);
-    const empleados = empIds.length > 0
+    const employeeIds = groups.map(group => group.employee_id?.[0]).filter(Boolean);
+    const empleados = employeeIds.length > 0
       ? (await execute('hr.employee', 'search_read',
-        [[['id', 'in', empIds]]], { fields: ['id', 'name', 'department_id'] }
+        [[['id', 'in', employeeIds]]], { fields: ['id', 'name', 'department_id'] }
       )) as Array<{ id: number; name: string; department_id: [number, string] | false }>
       : [];
 
-    const empMap = new Map(empleados.map(e => [e.id, e]));
+    const employeeMap = new Map(empleados.map(emp => [emp.id, emp]));
 
-    const result = groups
-      .map(g => {
-        const emp = empMap.get(g.employee_id?.[0]);
+    const attendanceRecords = groups
+      .map(group => {
+        const employee = employeeMap.get(group.employee_id?.[0]);
         return {
-          nombre: g.employee_id?.[1] || 'Desconocido',
-          horas_trabajadas: round2(g.worked_hours || 0),
-          horas_extra: round2(g.overtime_hours || 0),
-          departamento: emp?.department_id ? (Array.isArray(emp.department_id) ? emp.department_id[1] : '') : 'Sin departamento',
+          nombre: group.employee_id?.[1] || 'Desconocido',
+          horas_trabajadas: round2(group.worked_hours || 0),
+          horas_extra: round2(group.overtime_hours || 0),
+          departamento: employee?.department_id ? (Array.isArray(employee.department_id) ? employee.department_id[1] : '') : 'Sin departamento',
         };
       })
       .sort((a, b) => b.horas_trabajadas - a.horas_trabajadas);
 
-    return NextResponse.json({ empleados: result });
+    return NextResponse.json({ empleados: attendanceRecords });
   } catch (err) {
     console.error('API hr/attendance error:', err);
     return NextResponse.json({ error: 'Error interno' }, { status: 500 });

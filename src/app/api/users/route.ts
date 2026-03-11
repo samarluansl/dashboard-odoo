@@ -1,40 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
-import { supabase } from '@/lib/supabase';
-
-/** Verificar que el usuario autenticado es admin */
-async function requireAdmin(req: NextRequest) {
-  const authHeader = req.headers.get('authorization');
-  const token = authHeader?.replace('Bearer ', '');
-
-  if (!token) return { error: 'No autorizado', status: 401 };
-
-  const { data: { user }, error } = await supabase.auth.getUser(token);
-  if (error || !user) return { error: 'Token inválido', status: 401 };
-
-  const sb = createServerClient();
-  const { data: profile } = await sb
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single();
-
-  if (!profile || profile.role !== 'admin') {
-    return { error: 'Solo administradores', status: 403 };
-  }
-
-  return { userId: user.id };
-}
+import { requireAdmin } from '@/lib/auth';
+import { isValidRole } from '@/lib/validation';
 
 /** GET /api/users — Listar todos los usuarios */
 export async function GET(req: NextRequest) {
   const auth = await requireAdmin(req);
-  if ('error' in auth) {
-    return NextResponse.json({ error: auth.error }, { status: auth.status });
-  }
+  if ('error' in auth) return auth.error;
 
   const sb = createServerClient();
-  const { data, error } = await sb
+  const { data: profiles, error } = await sb
     .from('profiles')
     .select('*')
     .order('created_at', { ascending: true });
@@ -44,15 +19,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Error al obtener usuarios' }, { status: 500 });
   }
 
-  return NextResponse.json({ users: data });
+  return NextResponse.json({ users: profiles });
 }
 
 /** POST /api/users — Crear nuevo usuario */
 export async function POST(req: NextRequest) {
   const auth = await requireAdmin(req);
-  if ('error' in auth) {
-    return NextResponse.json({ error: auth.error }, { status: auth.status });
-  }
+  if ('error' in auth) return auth.error;
 
   try {
     const body = await req.json();
@@ -60,6 +33,16 @@ export async function POST(req: NextRequest) {
 
     if (!name || !email || !password) {
       return NextResponse.json({ error: 'Nombre, email y contraseña son obligatorios' }, { status: 400 });
+    }
+
+    // FIX: Validate role against whitelist
+    if (role && !isValidRole(role)) {
+      return NextResponse.json({ error: 'Rol inválido. Valores permitidos: admin, manager, viewer' }, { status: 400 });
+    }
+
+    // FIX: Validate allowed_companies is an array of strings
+    if (allowed_companies && (!Array.isArray(allowed_companies) || !allowed_companies.every((c: unknown) => typeof c === 'string'))) {
+      return NextResponse.json({ error: 'allowed_companies debe ser un array de strings' }, { status: 400 });
     }
 
     const sb = createServerClient();

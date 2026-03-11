@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { execute, resolveCompanies, round2 } from '@/lib/odoo';
+import { requireAuth } from '@/lib/auth';
+import { SUBSCRIPTION_STATE_LABELS } from '@/lib/subscription-states';
 
 export async function GET(req: NextRequest) {
+  const auth = await requireAuth(req);
+  if ('error' in auth) return auth.error;
+
   try {
     const { searchParams } = req.nextUrl;
     const company_name = searchParams.get('company') || undefined;
@@ -13,16 +18,6 @@ export async function GET(req: NextRequest) {
       ['is_subscription', '=', true],
       ...companyDomain,
     ];
-
-    // Odoo 17: subscription_state usa prefijos numéricos
-    const STATE_LABELS: Record<string, string> = {
-      '1_draft': 'Borrador',
-      '2_renewal': 'Renovación',
-      '3_progress': 'Activa',
-      '4_paused': 'Pausada',
-      '5_close': 'Cerrada',
-      '6_churn': 'Baja',
-    };
 
     const orders = (await execute('sale.order', 'search_read',
       [domain],
@@ -40,16 +35,16 @@ export async function GET(req: NextRequest) {
       subscription_state: string;
     }>;
 
-    const subscriptions = orders.map(o => {
-      const rawState = o.subscription_state || 'unknown';
+    const subscriptions = orders.map(order => {
+      const rawState = order.subscription_state || 'unknown';
       return {
-        name: o.name || 'Sin nombre',
-        partner: Array.isArray(o.partner_id) ? o.partner_id[1] : 'Sin cliente',
-        mrr: round2(o.recurring_monthly || 0),
-        start_date: o.date_order || '',
-        next_invoice: o.next_invoice_date || '',
+        name: order.name || 'Sin nombre',
+        partner: Array.isArray(order.partner_id) ? order.partner_id[1] : 'Sin cliente',
+        mrr: round2(order.recurring_monthly || 0),
+        start_date: order.date_order || '',
+        next_invoice: order.next_invoice_date || '',
         status: rawState,
-        status_label: STATE_LABELS[rawState] || rawState,
+        status_label: SUBSCRIPTION_STATE_LABELS[rawState] || rawState,
       };
     });
 

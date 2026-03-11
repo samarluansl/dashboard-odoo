@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { execute, resolveCompanies, round2 } from '@/lib/odoo';
+import { execute, executeStatic, resolveCompanies, round2 } from '@/lib/odoo';
+import { requireAuth } from '@/lib/auth';
+import { classifyPGC, type AccountInfo, type GroupEntry } from '@/lib/classify-pgc';
+import { isValidDate } from '@/lib/validation';
 
 export async function GET(req: NextRequest) {
+  const auth = await requireAuth(req);
+  if ('error' in auth) return auth.error;
+
   try {
     const { searchParams } = req.nextUrl;
     const date_from = searchParams.get('date_from');
@@ -12,18 +18,21 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'date_from y date_to son obligatorios' }, { status: 400 });
     }
 
+    // FIX: Validate date format to prevent injection via Odoo domains
+    if (!isValidDate(date_from) || !isValidDate(date_to)) {
+      return NextResponse.json({ error: 'Formato de fecha inválido. Usar YYYY-MM-DD' }, { status: 400 });
+    }
+
     const { label, domain: companyDomain, error } = await resolveCompanies(company_name);
     if (error) return NextResponse.json({ error }, { status: 404 });
 
-    // Obtener todas las cuentas P&L
+    // PERF: Account types are semi-static — use long-lived cache (10 min)
     const plTypes = ['income', 'income_other', 'expense', 'expense_depreciation', 'expense_direct_cost'];
-    const accounts = (await execute('account.account', 'search_read', [
+    const accounts = (await executeStatic('account.account', 'search_read', [
       [['account_type', 'in', plTypes]],
-    ], { fields: ['id', 'code', 'name', 'account_type'] })) as Array<{
-      id: number; code: string; name: string; account_type: string;
-    }>;
+    ], { fields: ['id', 'code', 'name', 'account_type'] })) as AccountInfo[];
 
-    const accountIds = accounts.map(a => a.id);
+    const accountIds = accounts.map(acc => acc.id);
 
     // Obtener saldos agrupados por cuenta
     const lineDomain: unknown[] = [
@@ -36,38 +45,10 @@ export async function GET(req: NextRequest) {
 
     const groups = (await execute('account.move.line', 'read_group',
       [lineDomain, ['balance'], ['account_id']], { lazy: false }
-    )) as Array<{ account_id: [number, string]; balance: number }>;
+    )) as GroupEntry[];
 
-    // Clasificar por PGC
-    let ingExpl = 0, gasExpl = 0, ingFin = 0, gasFin = 0;
-    for (const g of groups) {
-      const accId = g.account_id?.[0];
-      const acc = accounts.find(a => a.id === accId);
-      if (!acc) continue;
-      const code = acc.code;
-      const c1 = code.charAt(0);
-      const c2 = code.substring(0, 2);
-      const balance = g.balance || 0;
-
-      if (c1 === '7') {
-        const c3 = code.substring(0, 3);
-        if (['76', '77'].some(p => c2.startsWith(p)) || c3 === '769') {
-          if (balance < 0) ingFin += Math.abs(balance);
-          else gasFin += balance;
-        } else {
-          if (balance < 0) ingExpl += Math.abs(balance);
-          else gasExpl += balance;
-        }
-      } else if (c1 === '6') {
-        if (['66', '67'].some(p => c2.startsWith(p))) {
-          if (balance > 0) gasFin += balance;
-          else ingFin += Math.abs(balance);
-        } else {
-          if (balance > 0) gasExpl += balance;
-          else ingExpl += Math.abs(balance);
-        }
-      }
-    }
+    // Clasificar por PGC (centralizado)
+    const { ingExpl, gasExpl, ingFin, gasFin } = classifyPGC(groups, accounts);
 
     return NextResponse.json({
       empresa: label,

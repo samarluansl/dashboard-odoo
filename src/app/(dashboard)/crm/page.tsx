@@ -6,9 +6,10 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ErrorMessage } from '@/components/ui/error-message';
 import { useOdooQuery } from '@/lib/hooks/useOdooQuery';
-import { useCompanyFilter } from '@/lib/context/CompanyContext';
+import { useDateParams } from '@/lib/hooks/useDateParams';
 import { fmtEur2, cn } from '@/lib/utils';
 import { Target, Trophy, TrendingUp, Users, ArrowUpDown, Search, ChevronLeft, ChevronRight, ChevronDown, Check, X, UserPlus, UserMinus, AlertTriangle, CheckCircle } from 'lucide-react';
+import { CRM_STAGE_ORDER } from '@/lib/crm-stages';
 
 /* ── Multi-select dropdown para etapas CRM ── */
 function StageMultiSelect({
@@ -132,25 +133,11 @@ type Club = { name: string; partner: string; stage: string; stage_id: number; fe
 type ClubSortField = 'name' | 'partner' | 'stage' | 'ingreso';
 type SortDir = 'asc' | 'desc';
 
-// Etapas CRM en orden del pipeline (hardcoded por ID)
-const CRM_STAGE_ORDER = [
-  'Forms',
-  'BBDD / Potenciales clientes',
-  'Negociando Oportunidad',
-  'Contrato en preparación',
-  'Contrato enviado',
-  'Firmados + Proceso Onboarding + MKT',
-  'Arrancado',
-  'Impagos',
-  'Posible baja',
-  'Standby',
-  'No interesados',
-  'Perdidos',
-  'Clubes sin respuesta',
-];
+// FIX #17: Etapas CRM centralizadas en crm-stages.ts
+// CRM_STAGE_ORDER imported from '@/lib/crm-stages'
 
 export default function CRMPage() {
-  const { companyParam, dateFrom, dateTo, prevDateFrom, prevDateTo } = useCompanyFilter();
+  const { params, prevParams, companyOnlyParams, companyParam } = useDateParams();
 
   // Filtros pipeline
   const [selectedStages, setSelectedStages] = useState<string[]>([]);
@@ -163,21 +150,9 @@ export default function CRMPage() {
   const [clubPage, setClubPage] = useState(1);
   const CLUB_PAGE_SIZE = 15;
 
-  const params = useMemo(() => {
-    const p: Record<string, string> = { date_from: dateFrom, date_to: dateTo };
-    if (companyParam) p.company = companyParam;
-    return p;
-  }, [dateFrom, dateTo, companyParam]);
-
-  const prevParams = useMemo(() => {
-    const p: Record<string, string> = { date_from: prevDateFrom, date_to: prevDateTo };
-    if (companyParam) p.company = companyParam;
-    return p;
-  }, [prevDateFrom, prevDateTo, companyParam]);
-
   const summary = useOdooQuery<CRMSummary>({ url: '/api/crm/summary', params });
   const prevSummary = useOdooQuery<CRMSummary>({ url: '/api/crm/summary', params: prevParams });
-  const pipeline = useOdooQuery<{ stages: Array<{ name: string; value: number; count: number; color?: string }> }>({ url: '/api/crm/pipeline', params: companyParam ? { company: companyParam } : {} });
+  const pipeline = useOdooQuery<{ stages: Array<{ name: string; value: number; count: number; color?: string }> }>({ url: '/api/crm/pipeline', params: companyOnlyParams });
   const clubsList = useOdooQuery<{ clubs: Club[] }>({ url: '/api/crm/top-deals', params });
 
   // Etapas para filtros — siempre las 13 en orden del pipeline
@@ -248,8 +223,8 @@ export default function CRMPage() {
     <ArrowUpDown className={`inline h-3 w-3 ml-1 ${clubSort === field ? 'text-blue-600' : 'text-gray-300'}`} />
   );
 
-  const d = summary.data;
-  const p = prevSummary.data;
+  const crmData = summary.data;
+  const prevCrmData = prevSummary.data;
 
   return (
     <div className="space-y-6">
@@ -277,16 +252,16 @@ export default function CRMPage() {
 
       {/* KPIs — fila 1: 4 principales */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <KPICard title="Clubs activos" value={d?.clubs_activos ?? 0} previousValue={p?.clubs_activos} format="integer" icon={<CheckCircle className="h-4 w-4" />} trendPositive="up" loading={summary.loading} />
-        <KPICard title="Oportunidades" value={filteredOps.count} previousValue={p?.oportunidades_activas} format="integer" icon={<Target className="h-4 w-4" />} loading={summary.loading} />
-        <KPICard title="Altas" value={d?.altas ?? 0} previousValue={p?.altas} format="integer" icon={<UserPlus className="h-4 w-4" />} trendPositive="up" loading={summary.loading} subtitle="este periodo" />
-        <KPICard title="Bajas" value={d?.bajas ?? 0} previousValue={p?.bajas} format="integer" icon={<UserMinus className="h-4 w-4" />} trendPositive="down" loading={summary.loading} subtitle="este periodo" />
+        <KPICard title="Clubs activos" value={crmData?.clubs_activos ?? 0} previousValue={prevCrmData?.clubs_activos} format="integer" icon={<CheckCircle className="h-4 w-4" />} trendPositive="up" loading={summary.loading} />
+        <KPICard title="Oportunidades" value={filteredOps.count} previousValue={prevCrmData?.oportunidades_activas} format="integer" icon={<Target className="h-4 w-4" />} loading={summary.loading} />
+        <KPICard title="Altas" value={crmData?.altas ?? 0} previousValue={prevCrmData?.altas} format="integer" icon={<UserPlus className="h-4 w-4" />} trendPositive="up" loading={summary.loading} subtitle="este periodo" />
+        <KPICard title="Bajas" value={crmData?.bajas ?? 0} previousValue={prevCrmData?.bajas} format="integer" icon={<UserMinus className="h-4 w-4" />} trendPositive="down" loading={summary.loading} subtitle="este periodo" />
       </div>
       {/* KPIs — fila 2: 3 secundarios */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-3">
-        <KPICard title="Posibles bajas" value={d?.posibles_bajas ?? 0} previousValue={p?.posibles_bajas} format="integer" icon={<AlertTriangle className="h-4 w-4" />} trendPositive="down" loading={summary.loading} />
-        <KPICard title="Impagos" value={d?.impagos ?? 0} previousValue={p?.impagos} format="integer" icon={<AlertTriangle className="h-4 w-4" />} trendPositive="down" loading={summary.loading} />
-        <KPICard title="Conversión" value={d?.tasa_conversion ?? 0} previousValue={p?.tasa_conversion} format="percent" icon={<Users className="h-4 w-4" />} trendPositive="up" loading={summary.loading} />
+        <KPICard title="Posibles bajas" value={crmData?.posibles_bajas ?? 0} previousValue={prevCrmData?.posibles_bajas} format="integer" icon={<AlertTriangle className="h-4 w-4" />} trendPositive="down" loading={summary.loading} />
+        <KPICard title="Impagos" value={crmData?.impagos ?? 0} previousValue={prevCrmData?.impagos} format="integer" icon={<AlertTriangle className="h-4 w-4" />} trendPositive="down" loading={summary.loading} />
+        <KPICard title="Conversión" value={crmData?.tasa_conversion ?? 0} previousValue={prevCrmData?.tasa_conversion} format="percent" icon={<Users className="h-4 w-4" />} trendPositive="up" loading={summary.loading} />
       </div>
 
       {/* Pipeline por etapa — tabla con números */}

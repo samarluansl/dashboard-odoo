@@ -108,5 +108,5 @@ export const ALERT_TYPES: AlertType[] = [
 
 // Mapa rápido valor → label
 export const ALERT_TYPE_LABELS: Record<string, string> = Object.fromEntries(
-  ALERT_TYPES.map(a => [a.value, a.label])
+  ALERT_TYPES.map(alertType => [alertType.value, alertType.label])
 );

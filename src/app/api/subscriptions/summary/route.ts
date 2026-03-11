@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { execute, resolveCompanies, round2 } from '@/lib/odoo';
+import { requireAuth } from '@/lib/auth';
+import { ACTIVE_SUBSCRIPTION_STATES, CHURN_SUBSCRIPTION_STATES } from '@/lib/subscription-states';
 
 export async function GET(req: NextRequest) {
+  const auth = await requireAuth(req);
+  if ('error' in auth) return auth.error;
+
   try {
     const { searchParams } = req.nextUrl;
     const date_from = searchParams.get('date_from');
@@ -15,68 +20,60 @@ export async function GET(req: NextRequest) {
     const { label, domain: companyDomain, error } = await resolveCompanies(company_name);
     if (error) return NextResponse.json({ error }, { status: 404 });
 
-    // Odoo 17: subscription_state usa prefijos numéricos:
-    // '3_progress' (activa), '4_paused', '5_close' (cerrada), '6_churn' (baja), '1_draft', '2_renewal'
-    const ACTIVE_STATES = ['3_progress', '4_paused'];
-    const CHURN_STATES = ['5_close', '6_churn'];
-
-    // Suscripciones activas
+    // Build all domains upfront
     const activeDomain: unknown[] = [
       ['is_subscription', '=', true],
-      ['subscription_state', 'in', ACTIVE_STATES],
+      ['subscription_state', 'in', ACTIVE_SUBSCRIPTION_STATES],
       ...companyDomain,
     ];
 
-    const activas = (await execute('sale.order', 'search_count', [activeDomain])) as number;
-
-    // MRR (recurring_monthly) — solo las activas en progreso
     const mrrDomain: unknown[] = [
       ['is_subscription', '=', true],
       ['subscription_state', '=', '3_progress'],
       ...companyDomain,
     ];
 
-    const mrrGroups = (await execute('sale.order', 'read_group',
-      [mrrDomain, ['recurring_monthly'], []], { lazy: false }
-    )) as Array<Record<string, unknown>>;
-
-    const mrr = (mrrGroups[0]?.recurring_monthly as number) || 0;
-
-    // Nuevas en el período (fecha de inicio de suscripción en rango)
     const nuevasDomain: unknown[] = [
       ['is_subscription', '=', true],
-      ['subscription_state', 'in', ACTIVE_STATES],
+      ['subscription_state', 'in', ACTIVE_SUBSCRIPTION_STATES],
       ['date_order', '>=', date_from],
       ['date_order', '<=', date_to],
       ...companyDomain,
     ];
 
-    const nuevas = (await execute('sale.order', 'search_count', [nuevasDomain])) as number;
-
-    // Bajas (churned/closed) en el período
-    // Usamos end_date (fecha real de baja) en vez de date_order (fecha de creación)
     const bajasDomain: unknown[] = [
       ['is_subscription', '=', true],
-      ['subscription_state', 'in', CHURN_STATES],
+      ['subscription_state', 'in', CHURN_SUBSCRIPTION_STATES],
       ['end_date', '>=', date_from],
       ['end_date', '<=', date_to],
       ...companyDomain,
     ];
 
-    let bajas: number;
-    try {
-      bajas = (await execute('sale.order', 'search_count', [bajasDomain])) as number;
-    } catch {
-      // Fallback: si end_date no existe en este Odoo, intentar con write_date
-      const bajasFallbackDomain: unknown[] = [
-        ['is_subscription', '=', true],
-        ['subscription_state', 'in', CHURN_STATES],
-        ['write_date', '>=', date_from],
-        ['write_date', '<=', date_to],
-        ...companyDomain,
-      ];
-      bajas = (await execute('sale.order', 'search_count', [bajasFallbackDomain])) as number;
-    }
+    // PERF: Execute all 4 queries in parallel
+    const [activas, mrrGroups, nuevas, bajasResult] = await Promise.all([
+      execute('sale.order', 'search_count', [activeDomain]) as Promise<number>,
+      execute('sale.order', 'read_group',
+        [mrrDomain, ['recurring_monthly'], []], { lazy: false }
+      ) as Promise<Array<Record<string, unknown>>>,
+      execute('sale.order', 'search_count', [nuevasDomain]) as Promise<number>,
+      (async () => {
+        try {
+          return (await execute('sale.order', 'search_count', [bajasDomain])) as number;
+        } catch {
+          const bajasFallbackDomain: unknown[] = [
+            ['is_subscription', '=', true],
+            ['subscription_state', 'in', CHURN_SUBSCRIPTION_STATES],
+            ['write_date', '>=', date_from],
+            ['write_date', '<=', date_to],
+            ...companyDomain,
+          ];
+          return (await execute('sale.order', 'search_count', [bajasFallbackDomain])) as number;
+        }
+      })(),
+    ]);
+
+    const mrr = (mrrGroups[0]?.recurring_monthly as number) || 0;
+    const bajas = bajasResult;
 
     // Churn rate
     const churn_rate = activas > 0 ? round2((bajas / (activas + bajas)) * 100) : 0;

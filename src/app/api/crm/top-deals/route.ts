@@ -1,24 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { execute, resolveCompanies, round2 } from '@/lib/odoo';
+import { requireAuth } from '@/lib/auth';
+import { CRM_STAGE_NAMES } from '@/lib/crm-stages';
 
-// IDs de etapas CRM hardcoded (orden pipeline)
-const CRM_STAGES: Record<number, string> = {
-  15: 'Forms',
-  13: 'BBDD / Potenciales clientes',
-  12: 'Negociando Oportunidad',
-  14: 'Contrato en preparación',
-  6: 'Contrato enviado',
-  2: 'Firmados + Proceso Onboarding + MKT',
-  4: 'Arrancado',
-  19: 'Impagos',
-  11: 'Posible baja',
-  17: 'Standby',
-  5: 'No interesados',
-  18: 'Perdidos',
-  16: 'Clubes sin respuesta',
-};
+// FIX #15: Limit for top deals
+const TOP_DEALS_LIMIT = 500;
 
 export async function GET(req: NextRequest) {
+  const auth = await requireAuth(req);
+  if ('error' in auth) return auth.error;
+
   try {
     const { searchParams } = req.nextUrl;
     const company_name = searchParams.get('company') || undefined;
@@ -28,7 +19,7 @@ export async function GET(req: NextRequest) {
     const { domain: companyDomain, error } = await resolveCompanies(company_name);
     if (error) return NextResponse.json({ error }, { status: 404 });
 
-    // Traer TODAS las oportunidades activas con sus datos básicos
+    // Traer oportunidades activas con límite (#15)
     const domain: unknown[] = [
       ['active', '=', true],
       ['type', '=', 'opportunity'],
@@ -40,6 +31,7 @@ export async function GET(req: NextRequest) {
       {
         fields: ['name', 'partner_id', 'stage_id', 'x_studio_fecha_firma_alta'],
         order: 'stage_id asc',
+        limit: TOP_DEALS_LIMIT,
       }
     )) as Array<{
       id: number;
@@ -50,13 +42,13 @@ export async function GET(req: NextRequest) {
     }>;
 
     // Si hay fechas, calcular ingreso facturado por partner
-    let revenueByPartner: Record<number, number> = {};
+    const revenueByPartner: Record<number, number> = {};
 
     if (date_from && date_to) {
       // Obtener partner_ids únicos de las oportunidades
       const partnerIds = [...new Set(
         leads
-          .map(l => (Array.isArray(l.partner_id) ? l.partner_id[0] : null))
+          .map(lead => (Array.isArray(lead.partner_id) ? lead.partner_id[0] : null))
           .filter((id): id is number => id !== null)
       )];
 
@@ -80,24 +72,24 @@ export async function GET(req: NextRequest) {
           __count: number;
         }>;
 
-        for (const g of invoiceGroups) {
-          if (Array.isArray(g.partner_id)) {
-            revenueByPartner[g.partner_id[0]] = g.amount_untaxed || 0;
+        for (const invoiceGroup of invoiceGroups) {
+          if (Array.isArray(invoiceGroup.partner_id)) {
+            revenueByPartner[invoiceGroup.partner_id[0]] = invoiceGroup.amount_untaxed || 0;
           }
         }
       }
     }
 
-    const clubs = leads.map(l => {
-      const stageId = Array.isArray(l.stage_id) ? l.stage_id[0] : 0;
-      const partnerId = Array.isArray(l.partner_id) ? l.partner_id[0] : 0;
+    const clubs = leads.map(lead => {
+      const stageId = Array.isArray(lead.stage_id) ? lead.stage_id[0] : 0;
+      const partnerId = Array.isArray(lead.partner_id) ? lead.partner_id[0] : 0;
 
       return {
-        name: l.name || 'Sin nombre',
-        partner: Array.isArray(l.partner_id) ? l.partner_id[1] : 'Sin cliente',
-        stage: CRM_STAGES[stageId] || (Array.isArray(l.stage_id) ? l.stage_id[1] : 'Sin etapa'),
+        name: lead.name || 'Sin nombre',
+        partner: Array.isArray(lead.partner_id) ? lead.partner_id[1] : 'Sin cliente',
+        stage: CRM_STAGE_NAMES[stageId] || (Array.isArray(lead.stage_id) ? lead.stage_id[1] : 'Sin etapa'),
         stage_id: stageId,
-        fecha_alta: l.x_studio_fecha_firma_alta || null,
+        fecha_alta: lead.x_studio_fecha_firma_alta || null,
         ingreso: round2(revenueByPartner[partnerId] || 0),
       };
     });

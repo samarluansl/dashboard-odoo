@@ -7,7 +7,7 @@ import { TreasuryChart } from '@/components/charts/TreasuryChart';
 import { Badge } from '@/components/ui/badge';
 import { ErrorMessage } from '@/components/ui/error-message';
 import { useOdooQuery } from '@/lib/hooks/useOdooQuery';
-import { useCompanyFilter } from '@/lib/context/CompanyContext';
+import { useDateParams } from '@/lib/hooks/useDateParams';
 import { fmtEur2, fmtDate } from '@/lib/utils';
 import type { FinancialSummary, CashFlowData } from '@/types';
 import { TrendingUp, CreditCard, ArrowDownCircle, ArrowUpCircle, ChevronLeft, ChevronRight, ArrowUpDown, Search, AlertTriangle } from 'lucide-react';
@@ -16,7 +16,7 @@ type SortField = 'partner' | 'amount' | 'due_date' | 'days_overdue';
 type SortDir = 'asc' | 'desc';
 
 export default function FinancieroPage() {
-  const { companyParam, dateFrom, dateTo, prevDateFrom, prevDateTo } = useCompanyFilter();
+  const { params, prevParams, companyOnlyParams, companyParam } = useDateParams();
 
   // Facturas vencidas: paginación, filtro, ordenación
   const [invoicePage, setInvoicePage] = useState(1);
@@ -25,21 +25,9 @@ export default function FinancieroPage() {
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const PAGE_SIZE = 20;
 
-  const params = useMemo(() => {
-    const p: Record<string, string> = { date_from: dateFrom, date_to: dateTo };
-    if (companyParam) p.company = companyParam;
-    return p;
-  }, [dateFrom, dateTo, companyParam]);
-
-  const prevParams = useMemo(() => {
-    const p: Record<string, string> = { date_from: prevDateFrom, date_to: prevDateTo };
-    if (companyParam) p.company = companyParam;
-    return p;
-  }, [prevDateFrom, prevDateTo, companyParam]);
-
   const financial = useOdooQuery<FinancialSummary>({ url: '/api/financial/summary', params });
   const prevFinancial = useOdooQuery<FinancialSummary>({ url: '/api/financial/summary', params: prevParams });
-  const cashflow = useOdooQuery<CashFlowData>({ url: '/api/financial/cashflow', params: companyParam ? { company: companyParam } : {} });
+  const cashflow = useOdooQuery<CashFlowData>({ url: '/api/financial/cashflow', params: companyOnlyParams });
   const treasury = useOdooQuery<{ data: { fecha: string; valor: number }[] }>({ url: '/api/financial/treasury', params });
 
   const dso = useOdooQuery<{ dso: number; ventas_periodo: number; cuentas_cobrar: number }>({
@@ -52,7 +40,7 @@ export default function FinancieroPage() {
   const overdueInvoices = useOdooQuery<{
     total: number; count: number;
     facturas: Array<{ partner: string; amount: number; due_date: string; days_overdue: number }>;
-  }>({ url: '/api/financial/overdue', params: companyParam ? { company: companyParam } : {} });
+  }>({ url: '/api/financial/overdue', params: companyOnlyParams });
 
   // Procesar facturas: filtrar, ordenar, paginar
   const processedInvoices = useMemo(() => {

@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { execute, resolveCompanies, round2 } from '@/lib/odoo';
+import { requireAuth } from '@/lib/auth';
 
 export async function GET(req: NextRequest) {
+  const auth = await requireAuth(req);
+  if ('error' in auth) return auth.error;
+
   try {
     const { searchParams } = req.nextUrl;
     const company_name = searchParams.get('company') || undefined;
@@ -33,22 +37,23 @@ export async function GET(req: NextRequest) {
       name: string;
     }>;
 
+    const MS_PER_DAY = 86_400_000;
     const todayMs = Date.now();
-    const facturas = invoices.map(inv => {
-      const dueDate = inv.invoice_date_due;
+    const facturas = invoices.map(invoice => {
+      const dueDate = invoice.invoice_date_due;
       const dueMs = new Date(dueDate).getTime();
-      const days_overdue = Math.ceil((todayMs - dueMs) / 86400000);
+      const days_overdue = Math.ceil((todayMs - dueMs) / MS_PER_DAY);
 
       return {
-        partner: Array.isArray(inv.partner_id) ? inv.partner_id[1] : 'Sin cliente',
-        amount: round2(inv.amount_residual || 0),
+        partner: Array.isArray(invoice.partner_id) ? invoice.partner_id[1] : 'Sin cliente',
+        amount: round2(invoice.amount_residual || 0),
         due_date: dueDate,
         days_overdue,
-        invoice: inv.name,
+        invoice: invoice.name,
       };
     });
 
-    const total = facturas.reduce((s, f) => s + f.amount, 0);
+    const total = facturas.reduce((sum, factura) => sum + factura.amount, 0);
 
     return NextResponse.json({
       total: round2(total),

@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
+import { timingSafeEqual } from '@/lib/validation';
+import { ALERT_TYPES } from '@/lib/alert-types';
+
+// Pre-compute valid alert type values for fast lookup
+const VALID_ALERT_TYPES = new Set(ALERT_TYPES.map(a => a.value));
 
 /**
  * GET /api/notifications/recipients?alert_type=daily_summary
@@ -8,9 +13,10 @@ import { createServerClient } from '@/lib/supabase';
  * Requiere service role key o API secret para autenticación.
  */
 export async function GET(req: NextRequest) {
-  // Verificar autenticación del bot via header secreto
-  const botSecret = req.headers.get('x-bot-secret');
-  if (botSecret !== process.env.BOT_API_SECRET) {
+  // FIX: Timing-safe comparison to prevent timing attacks on bot secret
+  const botSecret = req.headers.get('x-bot-secret') || '';
+  const expectedSecret = process.env.BOT_API_SECRET || '';
+  if (!expectedSecret || !botSecret || !timingSafeEqual(botSecret, expectedSecret)) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   }
 
@@ -19,10 +25,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Se requiere alert_type' }, { status: 400 });
   }
 
+  // FIX: Validate alert_type against known types to prevent arbitrary DB queries
+  if (!VALID_ALERT_TYPES.has(alertType)) {
+    return NextResponse.json({ error: 'Tipo de alerta no válido' }, { status: 400 });
+  }
+
   const sb = createServerClient();
 
   // Buscar usuarios que tienen esta alerta activada Y notificaciones habilitadas
-  const { data, error } = await sb
+  const { data: prefRows, error } = await sb
     .from('notification_preferences')
     .select(`
       user_id,
@@ -50,7 +61,7 @@ export async function GET(req: NextRequest) {
     };
   }
 
-  const recipients = (data as unknown as PrefRow[] || [])
+  const recipients = (prefRows as unknown as PrefRow[] || [])
     .filter(row => row.profiles?.notifications_enabled && row.profiles?.phone)
     .map(row => ({
       name: row.profiles.name,

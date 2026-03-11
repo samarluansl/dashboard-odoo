@@ -54,9 +54,7 @@ export interface SubscriptionData {
   mrr: number;
   activas: number;
   nuevas: number;
-  nuevas_revenue: number;
   bajas: number;
-  bajas_revenue: number;
   churn_rate: number;
 }
 

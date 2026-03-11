@@ -45,12 +45,12 @@ export const COMPANIES: Company[] = [
  * Usado por el chat para restricción de empresas.
  */
 export const COMPANY_LABELS: Record<string, string> = Object.fromEntries(
-  COMPANIES.map(c => [c.value, c.label])
+  COMPANIES.map(company => [company.value, company.label])
 );
 
 /**
  * Busca una empresa por alias.
  */
 export function getCompanyByAlias(alias: string): Company | undefined {
-  return COMPANIES.find(c => c.value === alias);
+  return COMPANIES.find(company => company.value === alias);
 }

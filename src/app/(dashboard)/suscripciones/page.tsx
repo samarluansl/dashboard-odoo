@@ -7,19 +7,10 @@ import { TreasuryChart } from '@/components/charts/TreasuryChart';
 import { Badge } from '@/components/ui/badge';
 import { ErrorMessage } from '@/components/ui/error-message';
 import { useOdooQuery } from '@/lib/hooks/useOdooQuery';
-import { useCompanyFilter } from '@/lib/context/CompanyContext';
+import { useDateParams } from '@/lib/hooks/useDateParams';
 import { fmtEur2, fmtDate } from '@/lib/utils';
+import { SUBSCRIPTION_STATE_LABELS, SUBSCRIPTION_STATE_VARIANTS } from '@/lib/subscription-states';
 import { RefreshCw, TrendingUp, UserPlus, UserMinus, Search, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react';
-
-/** Mapeo de estado Odoo 17 a etiqueta y variante de Badge */
-const STATUS_CONFIG: Record<string, { label: string; variant: 'success' | 'warning' | 'danger' | 'default' }> = {
-  '3_progress': { label: 'Activa', variant: 'success' },
-  '4_paused': { label: 'Pausada', variant: 'warning' },
-  '5_close': { label: 'Cerrada', variant: 'default' },
-  '6_churn': { label: 'Baja', variant: 'danger' },
-  '1_draft': { label: 'Borrador', variant: 'default' },
-  '2_renewal': { label: 'Renovación', variant: 'success' },
-};
 
 type SubSortField = 'partner' | 'mrr' | 'start_date' | 'status';
 type SortDir = 'asc' | 'desc';
@@ -35,7 +26,7 @@ type Subscription = {
 };
 
 export default function SuscripcionesPage() {
-  const { companyParam, dateFrom, dateTo, prevDateFrom, prevDateTo } = useCompanyFilter();
+  const { params, prevParams, companyOnlyParams, companyParam } = useDateParams();
 
   // Filtros y paginación para tabla
   const [subFilter, setSubFilter] = useState('');
@@ -45,22 +36,10 @@ export default function SuscripcionesPage() {
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 15;
 
-  const params = useMemo(() => {
-    const p: Record<string, string> = { date_from: dateFrom, date_to: dateTo };
-    if (companyParam) p.company = companyParam;
-    return p;
-  }, [dateFrom, dateTo, companyParam]);
-
-  const prevParams = useMemo(() => {
-    const p: Record<string, string> = { date_from: prevDateFrom, date_to: prevDateTo };
-    if (companyParam) p.company = companyParam;
-    return p;
-  }, [prevDateFrom, prevDateTo, companyParam]);
-
   const summary = useOdooQuery<{ mrr: number; activas: number; nuevas: number; bajas: number; churn_rate: number }>({ url: '/api/subscriptions/summary', params });
   const prevSummary = useOdooQuery<{ mrr: number; activas: number; nuevas: number; bajas: number; churn_rate: number }>({ url: '/api/subscriptions/summary', params: prevParams });
   const mrrHistory = useOdooQuery<{ data: Array<{ fecha: string; valor: number }> }>({ url: '/api/subscriptions/mrr-history', params });
-  const subscriptionsList = useOdooQuery<{ subscriptions: Subscription[] }>({ url: '/api/subscriptions/list', params: companyParam ? { company: companyParam } : {} });
+  const subscriptionsList = useOdooQuery<{ subscriptions: Subscription[] }>({ url: '/api/subscriptions/list', params: companyOnlyParams });
 
   // Procesar suscripciones: filtrar, ordenar, paginar
   const processedSubs = useMemo(() => {
@@ -119,8 +98,10 @@ export default function SuscripcionesPage() {
     <ArrowUpDown className={`inline h-3 w-3 ml-1 ${sortField === field ? 'text-blue-600' : 'text-gray-300'}`} />
   );
 
-  const getStatusConfig = (status: string) =>
-    STATUS_CONFIG[status] || { label: status, variant: 'default' as const };
+  const getStatusConfig = (status: string) => ({
+    label: SUBSCRIPTION_STATE_LABELS[status] || status,
+    variant: SUBSCRIPTION_STATE_VARIANTS[status] || ('default' as const),
+  });
 
   return (
     <div className="space-y-6">

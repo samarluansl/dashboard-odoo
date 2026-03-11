@@ -1,6 +1,5 @@
 'use client';
 
-import { useMemo } from 'react';
 import { KPICard } from '@/components/dashboard/KPICard';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { TreasuryChart } from '@/components/charts/TreasuryChart';
@@ -8,28 +7,15 @@ import { BarChartComponent } from '@/components/charts/BarChart';
 import { Badge } from '@/components/ui/badge';
 import { ErrorMessage } from '@/components/ui/error-message';
 import { useOdooQuery } from '@/lib/hooks/useOdooQuery';
-import { useCompanyFilter } from '@/lib/context/CompanyContext';
+import { useDateParams } from '@/lib/hooks/useDateParams';
 import type { FinancialSummary, CashFlowData } from '@/types';
 import {
-  Euro, TrendingUp, CreditCard, Clock,
+  Euro, TrendingUp, CreditCard,
   Users, Target, RefreshCw, AlertTriangle,
 } from 'lucide-react';
 
 export default function DashboardPage() {
-  const { companyParam, dateFrom, dateTo, prevDateFrom, prevDateTo } = useCompanyFilter();
-
-  // Parámetros base
-  const params = useMemo(() => {
-    const p: Record<string, string> = { date_from: dateFrom, date_to: dateTo };
-    if (companyParam) p.company = companyParam;
-    return p;
-  }, [dateFrom, dateTo, companyParam]);
-
-  const prevParams = useMemo(() => {
-    const p: Record<string, string> = { date_from: prevDateFrom, date_to: prevDateTo };
-    if (companyParam) p.company = companyParam;
-    return p;
-  }, [prevDateFrom, prevDateTo, companyParam]);
+  const { params, prevParams, companyOnlyParams, companyParam } = useDateParams();
 
   // ═══ QUERIES ═══
   const financial = useOdooQuery<FinancialSummary>({
@@ -44,7 +30,7 @@ export default function DashboardPage() {
 
   const cashflow = useOdooQuery<CashFlowData>({
     url: '/api/financial/cashflow',
-    params: companyParam ? { company: companyParam } : {},
+    params: companyOnlyParams,
   });
 
   const treasury = useOdooQuery<{ data: { fecha: string; valor: number }[] }>({
@@ -114,7 +100,7 @@ export default function DashboardPage() {
 
   const alerts = useOdooQuery<{ count: number; critical: number }>({
     url: '/api/alerts/count',
-    params: companyParam ? { company: companyParam } : {},
+    params: companyOnlyParams,
   });
 
   // Datos para gráfico de barras de empresas
@@ -287,11 +273,11 @@ export default function DashboardPage() {
               </div>
             ) : financial.data ? (
               <div className="space-y-3">
-                <PLRow label="Ingresos explotación" value={financial.data.explotacion.ingresos} positive />
+                <PLRow label="Ingresos explotación" value={financial.data.explotacion.ingresos} />
                 <PLRow label="Gastos explotación" value={financial.data.explotacion.gastos} />
                 <PLRow label="Rdo. explotación" value={financial.data.explotacion.resultado} bold />
                 <div className="border-t border-gray-100 pt-2">
-                  <PLRow label="Ingresos financieros" value={financial.data.financiero.ingresos} positive />
+                  <PLRow label="Ingresos financieros" value={financial.data.financiero.ingresos} />
                   <PLRow label="Gastos financieros" value={financial.data.financiero.gastos} />
                   <PLRow label="Rdo. financiero" value={financial.data.financiero.resultado} bold />
                 </div>
@@ -355,10 +341,9 @@ export default function DashboardPage() {
 
 // ═══ Componentes auxiliares ═══
 
-function PLRow({ label, value, positive, bold, big }: {
+function PLRow({ label, value, bold, big }: {
   label: string;
   value: number;
-  positive?: boolean;
   bold?: boolean;
   big?: boolean;
 }) {

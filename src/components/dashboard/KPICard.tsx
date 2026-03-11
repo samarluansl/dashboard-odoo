@@ -1,5 +1,6 @@
 'use client';
 
+import { memo } from 'react';
 import { Card } from '@/components/ui/card';
 import { fmtEur, fmtEur2, fmtInt, fmtPct, cn } from '@/lib/utils';
 import { TrendingUp, TrendingDown, Minus, Download } from 'lucide-react';
@@ -16,7 +17,8 @@ interface KPICardProps {
   onExport?: () => void;
 }
 
-export function KPICard({
+// PERF: memo prevents re-renders when parent re-renders but KPI data hasn't changed
+export const KPICard = memo(function KPICard({
   title,
   value,
   previousValue,
@@ -102,4 +104,4 @@ export function KPICard({
       </div>
     </Card>
   );
-}
+});

@@ -1,30 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
-import { supabase } from '@/lib/supabase';
-
-/** Verificar que el usuario autenticado es admin */
-async function requireAdmin(req: NextRequest) {
-  const authHeader = req.headers.get('authorization');
-  const token = authHeader?.replace('Bearer ', '');
-
-  if (!token) return { error: 'No autorizado', status: 401 };
-
-  const { data: { user }, error } = await supabase.auth.getUser(token);
-  if (error || !user) return { error: 'Token inválido', status: 401 };
-
-  const sb = createServerClient();
-  const { data: profile } = await sb
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single();
-
-  if (!profile || profile.role !== 'admin') {
-    return { error: 'Solo administradores', status: 403 };
-  }
-
-  return { userId: user.id };
-}
+import { requireAdmin } from '@/lib/auth';
+import { isValidUUID, isValidRole } from '@/lib/validation';
 
 /** PUT /api/users/[id] — Actualizar perfil de usuario */
 export async function PUT(
@@ -32,14 +9,28 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const auth = await requireAdmin(req);
-  if ('error' in auth) {
-    return NextResponse.json({ error: auth.error }, { status: auth.status });
-  }
+  if ('error' in auth) return auth.error;
 
   try {
     const { id } = await params;
+
+    // FIX: Validate UUID format to prevent injection
+    if (!isValidUUID(id)) {
+      return NextResponse.json({ error: 'ID de usuario inválido' }, { status: 400 });
+    }
+
     const body = await req.json();
     const { name, email, phone, role, allowed_companies, notifications_enabled } = body;
+
+    // FIX: Validate role against whitelist
+    if (role !== undefined && !isValidRole(role)) {
+      return NextResponse.json({ error: 'Rol inválido. Valores permitidos: admin, manager, viewer' }, { status: 400 });
+    }
+
+    // FIX: Validate allowed_companies is an array of strings
+    if (allowed_companies !== undefined && (!Array.isArray(allowed_companies) || !allowed_companies.every((c: unknown) => typeof c === 'string'))) {
+      return NextResponse.json({ error: 'allowed_companies debe ser un array de strings' }, { status: 400 });
+    }
 
     const sb = createServerClient();
 
@@ -85,12 +76,15 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const auth = await requireAdmin(req);
-  if ('error' in auth) {
-    return NextResponse.json({ error: auth.error }, { status: auth.status });
-  }
+  if ('error' in auth) return auth.error;
 
   try {
     const { id } = await params;
+
+    // FIX: Validate UUID format
+    if (!isValidUUID(id)) {
+      return NextResponse.json({ error: 'ID de usuario inválido' }, { status: 400 });
+    }
 
     // No permitir que el admin se elimine a sí mismo
     if (id === auth.userId) {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
-import { supabase } from '@/lib/supabase';
+import { requireAuth } from '@/lib/auth';
 import { ALERT_TYPES, type FrequencyOption } from '@/lib/alert-types';
 
 /** Preferencia expandida con schedule */
@@ -11,23 +11,11 @@ export interface AlertPreference {
   preferred_time: string;
 }
 
-/** Obtener usuario autenticado */
-async function getAuthUser(req: NextRequest) {
-  const authHeader = req.headers.get('authorization');
-  const token = authHeader?.replace('Bearer ', '');
-  if (!token) return null;
-
-  const { data: { user }, error } = await supabase.auth.getUser(token);
-  if (error || !user) return null;
-  return user;
-}
-
 /** GET /api/notifications — Preferencias del usuario autenticado */
 export async function GET(req: NextRequest) {
-  const user = await getAuthUser(req);
-  if (!user) {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-  }
+  // FIX #4: Use requireAuth with server client instead of anon client
+  const auth = await requireAuth(req);
+  if ('error' in auth) return auth.error;
 
   const sb = createServerClient();
 
@@ -35,7 +23,7 @@ export async function GET(req: NextRequest) {
   const { data: prefs, error } = await sb
     .from('notification_preferences')
     .select('alert_type, enabled, frequency, preferred_day, preferred_time')
-    .eq('user_id', user.id);
+    .eq('user_id', auth.user.id);
 
   if (error) {
     console.error('API notifications GET error:', error);
@@ -44,15 +32,15 @@ export async function GET(req: NextRequest) {
 
   // Construir mapa con defaults para cada alert type
   const prefsMap: Record<string, AlertPreference> = {};
-  for (const at of ALERT_TYPES) {
-    const found = prefs?.find(p => p.alert_type === at.value);
-    prefsMap[at.value] = {
+  for (const alertType of ALERT_TYPES) {
+    const found = prefs?.find(pref => pref.alert_type === alertType.value);
+    prefsMap[alertType.value] = {
       enabled: found ? found.enabled : false,
       frequency: (found?.frequency && found.frequency !== 'default'
         ? found.frequency
-        : at.frequency) as FrequencyOption,
-      preferred_day: found?.preferred_day ?? (at.frequency === 'Semanal' ? 0 : null),
-      preferred_time: found?.preferred_time ?? at.defaultTime,
+        : alertType.frequency) as FrequencyOption,
+      preferred_day: found?.preferred_day ?? (alertType.frequency === 'Semanal' ? 0 : null),
+      preferred_time: found?.preferred_time ?? alertType.defaultTime,
     };
   }
 
@@ -61,10 +49,8 @@ export async function GET(req: NextRequest) {
 
 /** PUT /api/notifications — Actualizar preferencias del usuario autenticado */
 export async function PUT(req: NextRequest) {
-  const user = await getAuthUser(req);
-  if (!user) {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-  }
+  const auth = await requireAuth(req);
+  if ('error' in auth) return auth.error;
 
   try {
     const body = await req.json();
@@ -75,18 +61,18 @@ export async function PUT(req: NextRequest) {
     }
 
     const sb = createServerClient();
-    const validTypes = ALERT_TYPES.map(a => a.value);
+    const validTypes = ALERT_TYPES.map(alertType => alertType.value);
 
     // Upsert cada preferencia
     const upserts = Object.entries(preferences)
       .filter(([key]) => validTypes.includes(key))
       .map(([alert_type, value]) => {
-        const alertDef = ALERT_TYPES.find(a => a.value === alert_type)!;
+        const alertDef = ALERT_TYPES.find(alertType => alertType.value === alert_type)!;
 
         // Compatibilidad: si es boolean, solo toggle enabled
         if (typeof value === 'boolean') {
           return {
-            user_id: user.id,
+            user_id: auth.user.id,
             alert_type,
             enabled: value,
             updated_at: new Date().toISOString(),
@@ -96,7 +82,7 @@ export async function PUT(req: NextRequest) {
         // Objeto completo con schedule
         const freq = value.frequency || alertDef.frequency;
         return {
-          user_id: user.id,
+          user_id: auth.user.id,
           alert_type,
           enabled: value.enabled,
           frequency: freq === alertDef.frequency ? 'default' : freq,

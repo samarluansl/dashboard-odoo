@@ -4,13 +4,15 @@ import { createServerClient } from '@supabase/ssr';
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const code = searchParams.get('code');
-  const next = searchParams.get('next') || '/';
+  const rawNext = searchParams.get('next') || '/';
 
   if (!code) {
     return NextResponse.redirect(new URL('/login', req.url));
   }
 
-  const res = NextResponse.redirect(new URL(next, req.url));
+  // FIX: Prevent open redirect — only allow relative paths starting with /
+  const next = (rawNext.startsWith('/') && !rawNext.startsWith('//')) ? rawNext : '/';
+  const redirectResponse = NextResponse.redirect(new URL(next, req.url));
 
   try {
     const supabase = createServerClient(
@@ -19,10 +21,10 @@ export async function GET(req: NextRequest) {
       {
         cookies: {
           getAll: () =>
-            req.cookies.getAll().map(c => ({ name: c.name, value: c.value })),
+            req.cookies.getAll().map(cookie => ({ name: cookie.name, value: cookie.value })),
           setAll: (cookies) => {
             for (const { name, value, options } of cookies) {
-              res.cookies.set(name, value, options);
+              redirectResponse.cookies.set(name, value, options);
             }
           },
         },
@@ -35,5 +37,5 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(new URL('/login', req.url));
   }
 
-  return res;
+  return redirectResponse;
 }

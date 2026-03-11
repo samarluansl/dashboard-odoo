@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { execute, resolveCompanies, round2 } from '@/lib/odoo';
+import { execute, executeStatic, resolveCompanies, round2 } from '@/lib/odoo';
+import { requireAuth } from '@/lib/auth';
 
 export async function GET(req: NextRequest) {
+  const auth = await requireAuth(req);
+  if ('error' in auth) return auth.error;
+
   try {
     const { searchParams } = req.nextUrl;
     const date_from = searchParams.get('date_from');
@@ -15,12 +19,9 @@ export async function GET(req: NextRequest) {
     const { label, domain: companyDomain, error } = await resolveCompanies(company_name);
     if (error) return NextResponse.json({ error }, { status: 404 });
 
-    // Empleados activos
+    // Build all domains upfront
     const empDomain: unknown[] = [['active', '=', true], ...companyDomain];
 
-    const empleados_activos = (await execute('hr.employee', 'search_count', [empDomain])) as number;
-
-    // Nuevas altas en el período (create_date o first_contract_date)
     const altasDomain: unknown[] = [
       ['active', 'in', [true, false]],
       '|',
@@ -30,9 +31,6 @@ export async function GET(req: NextRequest) {
       ...companyDomain,
     ];
 
-    const nuevas_altas = (await execute('hr.employee', 'search_count', [altasDomain])) as number;
-
-    // Horas registradas en el período
     const horasDomain: unknown[] = [
       ['date', '>=', date_from],
       ['date', '<=', date_to],
@@ -40,18 +38,23 @@ export async function GET(req: NextRequest) {
       ...companyDomain,
     ];
 
-    const horasGroups = (await execute('account.analytic.line', 'read_group',
-      [horasDomain, ['unit_amount'], []], { lazy: false }
-    )) as Array<{ unit_amount: number }>;
+    // PERF: Execute all 4 independent queries in parallel (incl. nomina account lookup)
+    const [empleados_activos, nuevas_altas, horasGroups, nominaAccounts] = await Promise.all([
+      execute('hr.employee', 'search_count', [empDomain]) as Promise<number>,
+      execute('hr.employee', 'search_count', [altasDomain]) as Promise<number>,
+      execute('account.analytic.line', 'read_group',
+        [horasDomain, ['unit_amount'], []], { lazy: false }
+      ) as Promise<Array<{ unit_amount: number }>>,
+      // PERF: Nomina account IDs are semi-static — use long-lived cache
+      executeStatic('account.account', 'search_read', [
+        [['code', '=like', '640%']],
+      ], { fields: ['id'] }) as Promise<Array<{ id: number }>>,
+    ]);
 
     const horas_mes = horasGroups[0]?.unit_amount || 0;
 
-    // Coste de nómina (cuentas 640x)
-    const nominaAccounts = (await execute('account.account', 'search_read', [
-      [['code', '=like', '640%']],
-    ], { fields: ['id'] })) as Array<{ id: number }>;
-
-    const nominaIds = nominaAccounts.map(a => a.id);
+    // Coste de nómina — depends on nominaAccounts result
+    const nominaIds = nominaAccounts.map(acc => acc.id);
     const nominaDomain: unknown[] = [
       ['account_id', 'in', nominaIds],
       ['parent_state', '=', 'posted'],
@@ -64,7 +67,7 @@ export async function GET(req: NextRequest) {
       [nominaDomain, ['debit'], ['account_id']], { lazy: false }
     )) as Array<{ debit: number }>;
 
-    const coste_nomina = nominaGroups.reduce((s, g) => s + (g.debit || 0), 0);
+    const coste_nomina = nominaGroups.reduce((sum, group) => sum + (group.debit || 0), 0);
 
     return NextResponse.json({
       empresa: label,

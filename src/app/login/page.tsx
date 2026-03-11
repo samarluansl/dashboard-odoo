@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { Eye, EyeOff } from 'lucide-react';
 
-const SAVED_CREDENTIALS_KEY = 'dashboard_saved_credentials';
+const SAVED_EMAIL_KEY = 'dashboard_saved_email';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -17,19 +17,16 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
 
-  // Cargar credenciales guardadas al montar
+  // Cargar email guardado al montar (solo email, nunca contraseña)
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(SAVED_CREDENTIALS_KEY);
-      if (saved) {
-        const { email: savedEmail, password: savedPassword } = JSON.parse(atob(saved));
-        if (savedEmail) setEmail(savedEmail);
-        if (savedPassword) setPassword(savedPassword);
+      const savedEmail = localStorage.getItem(SAVED_EMAIL_KEY);
+      if (savedEmail) {
+        setEmail(savedEmail);
         setRememberMe(true);
       }
     } catch {
-      // Si hay datos corruptos, limpiar
-      localStorage.removeItem(SAVED_CREDENTIALS_KEY);
+      localStorage.removeItem(SAVED_EMAIL_KEY);
     }
   }, []);
 
@@ -39,12 +36,11 @@ export default function LoginPage() {
     setError('');
 
     try {
-      // Guardar o borrar credenciales según checkbox
+      // Solo guardar email si el usuario quiere recordar — NUNCA la contraseña
       if (rememberMe) {
-        const data = btoa(JSON.stringify({ email, password }));
-        localStorage.setItem(SAVED_CREDENTIALS_KEY, data);
+        localStorage.setItem(SAVED_EMAIL_KEY, email);
       } else {
-        localStorage.removeItem(SAVED_CREDENTIALS_KEY);
+        localStorage.removeItem(SAVED_EMAIL_KEY);
       }
 
       setStatus('Conectando con Supabase...');
@@ -143,7 +139,7 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {/* Recordar sesión */}
+            {/* Recordar email */}
             <label className="flex items-center gap-2 cursor-pointer select-none">
               <input
                 type="checkbox"
@@ -151,7 +147,7 @@ export default function LoginPage() {
                 onChange={e => setRememberMe(e.target.checked)}
                 className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
-              <span className="text-sm text-gray-600">Recordar mis datos</span>
+              <span className="text-sm text-gray-600">Recordar mi email</span>
             </label>
 
             {error && (

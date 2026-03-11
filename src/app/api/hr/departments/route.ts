@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { execute, resolveCompanies } from '@/lib/odoo';
-
-const COLORS = ['#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#3b82f6', '#f97316'];
+import { requireAuth } from '@/lib/auth';
+import { CHART_COLORS_ALT } from '@/lib/constants';
 
 export async function GET(req: NextRequest) {
+  const auth = await requireAuth(req);
+  if ('error' in auth) return auth.error;
+
   try {
     const { searchParams } = req.nextUrl;
     const company_name = searchParams.get('company') || undefined;
@@ -17,16 +20,16 @@ export async function GET(req: NextRequest) {
       [domain, ['id'], ['department_id']], { lazy: false }
     )) as Array<Record<string, unknown>>;
 
-    const data = groups
-      .map((g, i) => ({
-        name: Array.isArray(g.department_id) ? (g.department_id as [number, string])[1] : 'Sin departamento',
-        value: ((g.__count ?? g.department_id_count ?? 0) as number),
-        color: COLORS[i % COLORS.length],
+    const departmentCounts = groups
+      .map((group, index) => ({
+        name: Array.isArray(group.department_id) ? (group.department_id as [number, string])[1] : 'Sin departamento',
+        value: ((group.__count ?? group.department_id_count ?? 0) as number),
+        color: CHART_COLORS_ALT[index % CHART_COLORS_ALT.length],
       }))
-      .filter(d => d.value > 0)
+      .filter(dept => dept.value > 0)
       .sort((a, b) => b.value - a.value);
 
-    return NextResponse.json({ data });
+    return NextResponse.json({ data: departmentCounts });
   } catch (err) {
     console.error('API hr/departments error:', err);
     return NextResponse.json({ error: 'Error interno' }, { status: 500 });
